@@ -38,10 +38,10 @@ theme_config_file="themes/next/_config.yml"
 # Enable categories
 sed -i "s~#categories: ~categories: ~" "${theme_config_file}"
 # enable local search
-sed -i "N;s/\(local_search:\n  enable: \)false/\1true/" "${theme_config_file}"
+sed -i -e ":begin; /local_search/,/false/ { /false/! { $! { N; b begin }; }; s/false/true/; };" "${theme_config_file}"
 # change scheme
 sed -i "s~scheme: Muse~#scheme: Muse~" "${theme_config_file}"
-sed -i "s~#scheme: Pisces~scheme: Pisces~" "${theme_config_file}"
+sed -i "s~#scheme: Mist~scheme: Mist~" "${theme_config_file}"
 # change highlight_theme
 sed -i "s~highlight_theme: normal~highlight_theme: night eighties~" "${theme_config_file}"
 # change google analytics
@@ -53,9 +53,13 @@ cat <<EOF > themes/next/source/css/_variables/custom.styl
 EOF
 
 # add mermaid style
-#cat << EOF >> themes/next/layout/_partials/header.swig
-#<link rel="stylesheet", href="{{ url_for("https://cdn.bootcss.com/mermaid/6.0.0/mermaid.min.css") }}" />
-#<script src="//cdn.bootcss.com/mermaid/6.0.0/mermaid.min.js" />
-#EOF
+cat << EOF >> themes/next/layout/_partials/head/custom-head.swig
+{# mermaid stylesheet #}
+<link rel="stylesheet" href="https://cdn.bootcss.com/mermaid/6.0.0/mermaid.min.css?v=6.0.0" />
+EOF
+cat << EOF >> themes/next/layout/_scripts/vendors.swig
+{# mermaid js #}
+<script type="text/javascript" src="//cdn.bootcss.com/mermaid/6.0.0/mermaid.min.js?v=6.0.0"></script>
+EOF
 
 echo "Hexo environment pre install complete OK."
