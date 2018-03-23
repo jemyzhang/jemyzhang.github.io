@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title><![CDATA[Android init进程——属性服务]]></title>
+    <url>%2F2018%2F03%2F22%2FSkills%2Fandroid-init-process-properies%2F</url>
+    <content type="text"><![CDATA[本文由 简悦 SimpRead 转码， 原文地址 https://blog.csdn.net/wzy_1988/article/details/44999103 概述 init是一个进程，确切的说，它是Linux系统中用户空间的第一个进程。由于Android是基于Linux内核的，所以init也是Android系统中用户空间的第一个进程。init的进程号是1。作为天字第一号进程，init有很多重要的工作： init提供property service（属性服务）来管理Android系统的属性。 init负责创建系统中的关键进程，包括zygote。 以往的文章一上来就介绍init的源码，但是我这里先从这两个主要工作开始。搞清楚这两个主要工作是如何实现的，我们再回头来看init的源码。 这篇文章主要是介绍init进程的属性服务。 跟init属性服务相关的源码目录如下： system/core/init/ bionic/libc/bionic/ system/core/libcutils/ 属性服务 在windows平台上有一个叫做注册表的东西，它可以存储一些类似key/value的键值对。一般而言，系统或者某些应用程序会把自己的一些属性存储在注册表中，即使系统重启或应用程序重启，它还能根据之前在注册表中设置的属性值，进行相应的初始化工作。 Android系统也提供了类似的机制，称之为属性服务（property service）。应用程序可以通过这个服务查询或者设置属性。我们可以通过如下命令，获取手机中属性键值对。 1adb shell getprop 例如红米Note手机的属性值如下： 1234[ro.product.device]: [lcsh92_wet_jb9][ro.product.locale.language]: [zh][ro.product.locale.region]: [CN][ro.product.manufacturer]: [Xiaomi] 在system/core/init/init.c文件的main函数中，跟属性服务的相关代码如下： 12property_init();queue_builtin_action(property_service_init_action, &quot;property_service_init&quot;); 接下来，我们分别看一下这两处代码的具体实现。 属性服务初始化 ¶创建存储空间 首先，我们先来看一下property_init函数的源码（/system/core/init/property_service.c）： 1234void property_init(void)&#123; init_property_area();&#125; property_init函数中只是简单的调用了init_property_area方法，接下来我们看一下这个方法的具体实现： 12345678910111213141516171819static int property_area_inited = 0;static workspace pa_workspace;static int init_property_area(void)&#123; // 属性空间是否已经初始化 if (property_area_inited) return -1; if (__system_property_area_init()) return -1; if (init_workspace(&amp;pa_workspace, 0)) return -1; fcntl(pa_workspace.fd, F_SETFD, FD_CLOEXEC); property_area_inited = 1; return 0;&#125; 从init_property_area函数，我们可以看出，函数首先判断属性内存区域是否已经初始化过，如果已经初始化，则返回-1。如果没有初始化，我们接下来会发现有两个关键函数**__system_property_area_init和init_workspace**应该是跟内存区域初始化相关。那我们分别分析一下这两个函数具体实现。 ¶__system_property_area_init __system_property_area_init函数位于/bionic/libc/bionic/system_properties.c文件中，具体代码实现如下： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172struct prop_area &#123; unsigned bytes_used; unsigned volatile serial; unsigned magic; unsigned version; unsigned reserved[28]; char data[0];&#125;;typedef struct prop_area prop_area;prop_area *__system_property_area__ = NULL;#define PROP_FILENAME &quot;/dev/__properties__&quot;static char property_filename[PATH_MAX] = PROP_FILENAME; #define PA_SIZE (128 * 1024)static int map_prop_area_rw()&#123; prop_area *pa; int fd; int ret; /** * O_RDWR ==&gt; 读写 * O_CREAT ==&gt; 若不存在，则创建 * O_NOFOLLOW ==&gt; 如果filename是软链接，则打开失败 * O_EXCL ==&gt; 如果使用O_CREAT是文件存在，则可返回错误信息 */ fd = open(property_filename, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_EXCL, 0444); if (fd &lt; 0) &#123; if (errno == EACCES) &#123; abort(); &#125; return -1; &#125; ret = fcntl(fd, F_SETFD, FD_CLOEXEC); if (ret &lt; 0) goto out; if (ftruncate(fd, PA_SIZE) &lt; 0) goto out; pa_size = PA_SIZE; pa_data_size = pa_size - sizeof(prop_area); compat_mode = false; // mmap映射文件实现共享内存 pa = mmap(NULL, pa_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0); if (pa == MAP_FAILED) goto out; /*初始化内存地址中所有值为0*/ memset(pa, 0, pa_size); pa-&gt;magic = PROP_AREA_MAGIC; pa-&gt;version = PROP_AREA_VERSION; pa-&gt;bytes_used = sizeof(prop_bt); __system_property_area__ = pa; close(fd); return 0;out: close(fd); return -1;&#125;int __system_property_area_init()&#123; return map_prop_area_rw();&#125; 代码比较好理解，主要内容是利用mmap映射property_filename创建了一个共享内存区域，并将共享内存的首地址赋值给全局变量__system_property_area__。 Tips 主要是想说一下struct prop_area的结构体定义很精妙。特别是char data[];的定义。这里char data[]可以理解成动态数组指针，但是它并没有被占用内存空间。所以计算pa-&gt;bytes_used的时候，并没有计算char data[]占用的空间。 但是，char data[]又是动态数组，我理解mmap分配的内存，prop_area除了头部占用了部分空间(即sizeof(prop_area))，其他的都是char data去支配了。 按照我的理解，最终属性也应该分配到char data[]所指向的内存中去。为了验证我的想法，我会跟踪property_set方法的具体实现。 ¶property_set property_set是在/system/core/init/property_service.c文件中定义的，具体源码如下： 1234567891011121314151617181920212223242526272829303132333435363738394041int property_set(const char *name, const char *value)&#123; prop_info *pi; int ret; unsigned int namelen = strlen(name); unsigned int valuelen = strlen(value); if (!is_legal_property_name(name, namelen)) return -1; if (valuelen &gt;= PROP_VALUE_MAX) return -1; pi = (prop_info*) __system_property_find(name); // ......省略后续代码，之后重点分析__system_property_find即可&#125;static bool is_legal_property_name(const char *name, unsigned int namelen)&#123; if (namelen &gt;= PROP_NAME_MAX) return false; if (namelen &lt; 1) return false; if (name[0] == &apos;.&apos;) return false; if (name[namelen - 1] == &apos;.&apos;) return false; /* Only allow alphanumeric, plus &apos;.&apos;, &apos;-&apos;, or &apos;_&apos;*/ /* Don&apos;t allow &quot;..&quot; to appear in a property name */ unsigned int i; bool previous_was_dot = false; for (i = 0; i &lt; namelen; i ++) &#123; if (name[i] == &apos;.&apos;) &#123; if (previous_was_dot == true) return false; previous_was_dot = true; continue; &#125; previous_was_dot = false; if (name[i] == &apos;_&apos; || name[i] == &apos;-&apos;) continue; if (name[i] &gt;= &apos;0&apos; &amp;&amp; name[i] &lt;= &apos;9&apos;) continue; if (name[i] &gt;= &apos;a&apos; &amp;&amp; name[i] &lt;= &apos;z&apos;) continue; if (name[i] &gt;= &apos;A&apos; &amp;&amp; name[i] &lt;= &apos;Z&apos;) continue; return false; &#125; return true;&#125; 可以看到，在property_set方法中，当添加一个(name, value)键值对时，会先在当前的属性空间中查找该键值对是否已经存在。根据我们之前的分析，这里查找的属性空间应该是prop_area结构体所指向的data区域。接下来，让我们深入代码去验证我们的想法。 __system_property_find函数是在/bionic/libc/bionic/system_properties.c文件中定义的： 12345678910111213141516171819const prop_info *__system_property_find(const char *name)&#123; return find_property(root_node(), name, strlen(name), NULL, 0, false);&#125;// 分析一下root_node的实现static prop_bt *root_node()&#123; return to_prop_obj(0);&#125;static void *to_prop_obj(prop_off_t off)&#123; if (off &gt; pa_data_size) &#123; return NULL; &#125; // 注意，这里off的值为0 // 所以，验证了我们的想法，prop_area结构体的char data[]果然是属性空间的起始地址 return __system_property_area__-&gt;data + off;&#125; 上面的代码已经验证了我之前所说的想法：data指针指向的区域是属性内容的起始地址。 大家感兴趣可以自己阅读代码，看一下属性键值对是如何在属性空间中存储的。（我大体看了一下，貌似是很简单的二叉查找树的形式）。 Tips 关于mmap映射文件实现共享内存IPC通信机制，可以参考这篇文章：mmap实现IPC通信机制 ¶init_workspace 接下来，我们来看一下init_workspace函数的源码（/system/core/init/property_service.c）： 1234567891011121314151617typedef struct &#123; void *data; size_t size; int fd;&#125;workspace;static int init_workspace(workspace *w, size_t size)&#123; void *data; int fd = open(PROP_FILENAME, O_RDONLY | O_NOFOLLOW); if (fd &lt; 0) return -1; w-&gt;size = size; w-&gt;fd = fd; return 0;&#125; ¶客户端进程访问属性内存区域 虽然属性内存区域是init进程创建的，但是Android系统希望其他进程也能够读取这块内存区域里的内容。为了做到这一点，init进程在属性区域初始化过程中做了如下两项工作： 把属性内存区域创建在共享内存上，而共享内存是可以跨进程的。这一点，在上述代码中是通过mmap映射/dev/__properties__文件实现的。pa_workspace变量中的fd成员也保存了映射文件的句柄。 如何让其他进程知道这个共享内存句柄呢？Android先将文件映射句柄赋值给__system_property_area__变量，这个变量属于bionic_lic库中的输出的一个变量，然后利用了gcc的constructor属性，这个属性指明了一个__lib_prenit函数，当bionic_lic库被加载时，将自动调用__libc_prenit，这个函数内部完成共享内存到本地进程的映射工作。 只讲原理是不行的，我们直接来看一下__lib_prenit函数代码的相关实现： 1234567void __attribute__((constructor)) __libc_prenit(void);void __libc_prenit(void)&#123; // ... __libc_init_common(elfdata); // 调用这个函数 // ...&#125; __libc_init_common函数为： 12345void __libc_init_common(uintptr_t *elfdata)&#123; // ... __system_properties_init(); // 初始化客户端的属性存储区域&#125; __system_properties_init函数有回到了我们熟悉的/bionic/libc/bionic/system_properties.c文件： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384static int get_fd_from_env(void)&#123; char *env = getenv(&quot;ANDROID_PROPERTY_WORKSPACE&quot;); if (! env) &#123; return -1; &#125; return atoi(env);&#125;static int map_prop_area()&#123; bool formFile = true; int result = -1; int fd; int ret; fd = open(property_filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC); if (fd &gt;= 0) &#123; /* For old kernels that don&apos;t support O_CLOEXEC */ ret = fcntl(fd, F_SETFD, FD_CLOEXEC); if (ret &lt; 0) goto cleanup; &#125; if ((fd &lt; 0) &amp;&amp; (error == ENOENT)) &#123; fd = get_fd_from_env(); fromFile = false; &#125; if (fd &lt; 0) &#123; return -1; &#125; struct stat fd_stat; if (fstat(fd, &amp;fd_stat) &lt; 0) &#123; goto cleanup; &#125; if ((fd_stat.st_uid != 0) || (fd_stat.st_gid != 0) || (fd_stat.st_mode &amp; (S_IWGRP | S_IWOTH) != 0) || (fd_stat.st_size &lt; sizeof(prop_area))) &#123; goto cleanup; &#125; pa_size = fd_stat.st_size; pa_data_size = pa_size - sizeof(prop_area); /* * 映射init创建的属性内存到本地进程空间，这样本地进程就可以使用这块共享内存了。 * 注意：映射时制定了PROT_READ属性，所以客户端进程只能读属性，不能设置属性。 */ prop_area *pa = mmap(NULL, pa_size, PROT_READ, MAP_SHARED, fd, 0); if (pa == MAP_FAILED) &#123; goto cleanup; &#125; if ((pa-&gt;magic != PROP_AREA_MAGIC) || (pa-&gt;version != PROP_AREA_VERSION &amp;&amp; pa-&gt;version != PROP_AREA_VERSION_COMPAT)) &#123; munmap(pa, pa_size); goto cleanup; &#125; if (pa-&gt;version == PROP_AREA_VERSION_COMPAT) &#123; compat_mode = true; &#125; result = 0; __system_property_area__ = pa;cleanup: if (fromFile) &#123; close(fd); &#125; return result;&#125;int __system_properties_init()&#123; return map_prop_area();&#125; 通过对源码的阅读，可以发现，客户端通过mmap映射，可以读取属性内存的内容，但是没有权限设置属性。那客户端是如何设置属性的呢？这就涉及到下面要将的属性服务器了。 属性服务器的分析 init进程会启动一个属性服务器，而客户端只能通过与属性服务器的交互来设置属性。 ¶启动属性服务器 先来看一下属性服务器的内容，它由property_service_init_action函数启动，源码如下（/system/core/init/init.c&amp;&amp;property_service.c）： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899100101102103104105106107static int property_service_init_action(int nargs, char **args)&#123; start_property_service(); return 0;&#125;static void load_override_properties()&#123;#ifdef ALLOW_LOCAL_PROP_OVERRIDE char debuggable[PROP_VALUE_MAX]; int ret; ret = property_get(&quot;ro.debuggable&quot;, debuggable); if (ret &amp;&amp; (strcmp(debuggable, &quot;1&quot;) == 0)) &#123; load_properties_from_file(PROP_PATH_LOCAL_OVERRIDE); &#125;#endif&#125;static void load_properties(char *data)&#123; char *key, *value, *eol, *sol, *tmp; sol = data; while ((eol = strchr(sol, &apos;\n&apos;))) &#123; key = sol; // 赋值下一行的指针给sol *eol ++ = 0; sol = eol; value = strchr(key, &apos;=&apos;); if (value == 0) continue; *value++ = 0; while (isspace(*key)) key ++; if (*key == &apos;#&apos;) continue; tmp = value - 2; while ((tmp &gt; key) &amp;&amp; isspace(*tmp)) *tmp-- = 0; while (isspace(*value)) value ++; tmp = eol - 2; while ((tmp &gt; value) &amp;&amp; isspace(*tmp)) *tmp-- = 0; property_set(key, value); &#125;&#125;int create_socket(const char *name, int type, mode_t perm, uid_t uid, gid_t gid)&#123; struct sockaddr_un addr; int fd, ret; char *secon; fd = socket(PF_UNIX, type, 0); if (fd &lt; 0) &#123; ERROR(&quot;Failed to open socket &apos;%s&apos;: %s\n&quot;, name, strerror(errno)); return -1; &#125; memset(&amp;addr, 0, sizeof(addr)); addr.sun_family = AF_UNIX; snprintf(addr.sun_path, sizeof(addr.sun_path), ANDROID_SOCKET_DIR&quot;/%s&quot;, name); ret = unlink(addr.sun_path); if (ret != 0 &amp;&amp; errno != ENOENT) &#123; goto out_close; &#125; ret = bind(fd, (struct sockaddr *)&amp;addr, sizeof(addr)); if (ret) &#123; goto out_unlink; &#125; chown(addr.sun_path, uid, gid); chmod(addr.sun_path, perm); return fd;out_unlink: unlink(addr.sun_path);out_close: close(fd); return -1;&#125;#define PROP_PATH_SYSTEM_BUILD &quot;/system/build.prop&quot;#define PROP_PATH_SYSTEM_DEFAULT &quot;/system/default.prop&quot;#define PROP_PATH_LOCAL_OVERRIDE &quot;/data/local.prop&quot;#define PROP_PATH_FACTORY &quot;/factory/factory.prop&quot;void start_property_service(void)&#123; int fd; load_properties_from_file(PROP_PATH_SYSTEM_BUILD); load_properties_from_file(PROP_PATH_SYSTEM_DEFAULT); load_override_properties(); /*Read persistent properties after all default values have been loaded.*/ load_persistent_properties(); fd = create_socket(PROP_SERVICE_NAME, SOCK_STREAM, 0666, 0, 0); if (fd &lt; 0) return; fcntl(fd, F_SETFD, FD_CLOEXEC); fcntl(fd, F_SETFL, O_NONBLOCK); listen(fd, 8); property_set_fd = fd;&#125; 从上述代码可以看到，init进程除了会预写入指定文件（例如：system/build.prop）属性外，还会创建一个UNIX Domain Socket，用于接受客户端的请求，构建属性。那这个socket请求是再哪里被处理的呢？ 答案是：在init中的for循环处已经进行了相关处理。 更多关于UNIX Domain Socket IPC的介绍，可以考虑这篇文章：UNIX Domain Socket IPC ¶服务端处理设置属性请求 接收属性设置请求的地方是在init进程中，相关代码如下所示： 123456789101112int main(int argc, char **argv)&#123; // ...省略不相关代码 for (;;) &#123; // ... for (i = 0; i &lt; fd_count; i ++) &#123; if (ufds[i].fd == get_property_set_fd()) handle_property_set_fd(); &#125; &#125;&#125; 从上述代码可以看出，当属性服务器收到客户端请求时，init进程会调用handle_property_set_fd函数进行处理，函数位置是：system/core/init/property_service.c，我们来看一下这个函数的实现源码： 12345678910111213141516171819202122232425262728293031323334353637383940414243444546474849void handle_property_set_fd()&#123; prop_msg msg; int s; int r; int res; struct ucred cr; struct sockaddr_un addr; socklen_t addr_size = sizeof(addr); socklen_t cr_size = sizeof(cr); char *source_ctx = NULL; // 接收TCP连接 if ((s = accept(property_set_fd, (struct sockaddr *) &amp;addr, &amp;addr_size)) &lt; 0) &#123; return; &#125; // 接收客户端请求数据 r = TEMP_FAILURE_RETRY(recv(s, &amp;msg, sizeof(msg), 0)); if (r != sizeof(prop_msg)) &#123; ERROR(&quot;sys_prop: mis-match msg size received: %d expected : %d errno: %d\n&quot;, r, sizeof(prop_msg), errno); close(s); return; &#125; switch(msg.cmd) &#123; case PROP_MSG_SETPROP: msg.name[PROP_NAME_MAX - 1] = 0; msg.value[PROP_VALUE_MAX - 1] = 0; if (memcmp(msg.name, &quot;ctl.&quot;, 4) == 0) &#123; close(s); if (check_control_perms(msg.value, cr.uid, cr.gid, source_ctx)) &#123; handle_control_message((char*) msg.name + 4, (char*) msg.value); &#125; else &#123; ERROR(&quot;sys_prop: Unable to %s service ctl [%s] uid:%d gid:%d pid:%d\n&quot;, msg.name + 4, msg.value, cr.uid, cr.gid, cr.pid); &#125; &#125; else &#123; if (check_perms(msg.name, cr.uid, cr.gid, source_ctx)) &#123; property_set((char *) msg.name, (char*) msg.value); &#125; close(s); &#125; break; default: close(s); break; &#125;&#125; 当客户端的权限满足要求时，init就调用property_set进行相关处理。property_set源码实现如下： 12345678910111213141516171819202122232425262728293031323334int property_set(const char *name, const char *value)&#123; prop_info *pi; int ret; size_t namelen = strlen(name); size_t valuelen = strlen(value); if (! is_legal_property_name(name, namelen)) return -1; if (valuelen &gt;= PROP_VALUE_MAX) return -1; // 从属性空间中寻找是否已经存在该属性值 pi = (prop_info*) __system_property_find(name); if (pi != 0) &#123; // ro开头的属性被设置后，不允许再被修改 if (! strncmp(name, &quot;ro.&quot;, 3)) return -1; __system_property_update(pi, value, valuelen); &#125; else &#123; ret = __system_property_add(name, namelen, value, valuelen); &#125; // 有一些特殊的属性需要特殊处理，例如net.和persist.开头的属性 if (strncmp(&quot;net.&quot;, name, strlen(&quot;net.&quot;)) == 0) &#123; if (strcmp(&quot;net.change&quot;, name) == 0) &#123; return 0; &#125; property_set(&quot;net.change&quot;, name); &#125; else if (persistent_properties_loaded &amp;&amp; strncmp(&quot;persist.&quot;, name, strlen(&quot;persist.&quot;)) == 0) &#123; write_persistent_property(name, value); &#125; property_changed(name, value); return 0;&#125; 属性服务器端的工作基本到这里就完成了。最后，我们来看一下客户端是如何发送设置属性的socket请求。 ¶客户端发送请求 客户端设置属性时是调用了property_set(“sys.istest”, “true”)方法。从上述分析可知，该方法实现跟服务器端的property_set方法不同，该方法一定是发送了socket请求，该方法源码位置为：/system/core/libcutils/properties.c： 1234int property_set(const char *key, const char *value)&#123; return __system_property_set(key, value);&#125; 可以看到，property_set调用了__system_property_set方法，这个方法位于：/bionic/libc/bionic/system_properties.c文件中： 12345678910111213141516171819202122232425262728293031323334353637383940414243444546474849505152535455565758596061struct prop_msg&#123; unsigned cmd; char name[PROP_NAME_MAX]; char value[PROP_VALUE_MAX];&#125;;typedef struct prop_msg prop_msg;static int send_prop_msg(prop_msg *msg)&#123; struct pollfd pollfds[1]; struct sockaddr_un addr; socklen_t alen; size_t namelen; int s; int r; int result = -1; s = socket(AF_LOCAL, SOCK_STREAM, 0); if (s &lt; 0) &#123; return result; &#125; memset(&amp;addr, 0, sizeof(addr)); namelen = strlen(property_service_socket); strlcpy(addr.sun_path, property_service_socket, sizeof(addr.sun_path)); addr.sun_family = AF_LOCAL; alen = namelen + offsetof(struct sockaddr_un, sun_path) + 1; if (TEMP_FAILURE_RETRY(connect(s, (struct sockaddr *) &amp;addr, alen)) &lt; 0) &#123; close(s); return result; &#125; r = TEMP_FAILURE_RETRY(send(s, msg, sizeof(prop_msg), 0)); close(s); return result;&#125;int __system_property_set(const char *key, const char *value)&#123; int err; prop_msg msg; if (key == 0) return -1; if (value == 0) value = &quot;&quot;; if (strlen(key) &gt;= PROP_NAME_MAX) return -1; if (strlen(value) &gt;= PROP_VALUE_MAX) return -1; memset(&amp;msg, 0, sizeof(msg)); msg.cmd = PROP_MSG_SETPROP; strlcpy(msg.name, key, sizeof(msg.name)); strlcpy(msg.value, value, sizeof(msg.value)); err = send_prop_msg(&amp;msg); if (err &lt; 0) &#123; return err; &#125; return 0;&#125;]]></content>
+      <tags>
+        <tag>android</tag>
+        <tag>system</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Add Namecheap DDNS on DSM]]></title>
+    <url>%2F2017%2F08%2F03%2FSkills%2Fdsm-ddns-namecheap%2F</url>
+    <content type="text"><![CDATA[1.SSH into your Synology NAS 2.Type: 1sudo vi /usr/syno/bin/ddns/namecheap.php 3a.For paste insert mode type :set paste 3b.Press i 4a.Paste the following: 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899100101#!/usr/bin/php -d open_basedir=/usr/syno/bin/ddns&lt;?phpif ($argc !== 5) &#123; echo &apos;badparam&apos;; exit();&#125;$account = (string)$argv[1];$pwd = (string)$argv[2];$hostname = (string)$argv[3];$ip = (string)$argv[4];// check the hostname contains &apos;.&apos;if (strpos($hostname, &apos;.&apos;) === false) &#123; echo &apos;badparam&apos;; exit();&#125;// only for IPv4 formatif (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) &#123; echo &quot;badparam&quot;; exit();&#125;//$array = explode(&apos;.&apos;, $hostname);//$domain = implode(&apos;.&apos;, array_slice($array, 1));//$hostname = implode(&apos;.&apos;, array_slice($array, 0, 1));$url = &apos;https://dynamicdns.park-your-domain.com/update?host=&apos;.$account.&apos;&amp;domain=&apos;.$hostname.&apos;&amp;password=&apos;.$pwd.&apos;&amp;ip=&apos;.$ip;echo $url;$req = curl_init();curl_setopt($req, CURLOPT_URL, $url);curl_setopt($req, CURLOPT_RETURNTRANSFER, true);$res = curl_exec($req);curl_close($req);/*Success response:&lt;?xml version=&quot;1.0&quot;?&gt; &lt;interface-response&gt; &lt;Command&gt;SETDNSHOST&lt;/Command&gt; &lt;Language&gt;eng&lt;/Language&gt; &lt;IP&gt;%ip-address%&lt;/IP&gt; &lt;ErrCount&gt;%error-count%&lt;/ErrCount&gt; &lt;ResponseCount&gt;%response-count%&lt;/ResponseCount&gt; &lt;Done&gt;true&lt;/Done&gt; &lt;debug&gt;&lt;![CDATA[]]&gt;&lt;/debug&gt;&lt;/interface-response&gt;%ip-address% = IP address%error-count% = 0%response-count% = 0Failure response:&lt;?xml version=&quot;1.0&quot;?&gt; &lt;interface-response&gt; &lt;Command&gt;SETDNSHOST&lt;/Command&gt; &lt;Language&gt;eng&lt;/Language&gt; &lt;ErrCount&gt;%error-count%&lt;/ErrCount&gt; &lt;errors&gt; &lt;Err1&gt;%error-message%&lt;/Err1&gt; &lt;/errors&gt; &lt;ResponseCount&gt;%response-count%&lt;/ResponseCount&gt; &lt;responses&gt; &lt;response&gt; &lt;ResponseNumber&gt;%response-number%&lt;/ResponseNumber&gt; &lt;ResponseString&gt;%response-message%&lt;/ResponseString&gt; &lt;/response&gt; &lt;/responses&gt; &lt;Done&gt;true&lt;/Done&gt; &lt;debug&gt;&lt;![CDATA[]]&gt;&lt;/debug&gt;&lt;/interface-response&gt;%error-count% = 1%error-message% = Error message%response-count% = 1%response-number% = Code for response message%response-message% = Response message (similar to %error-message%)*/$xml = new SimpleXMLElement($res);if ($xml-&gt;ErrCount &gt; 0) &#123; $error = $xml-&gt;errors[0]-&gt;Err1; if (strcmp($error, &quot;Domain name not found&quot;) === 0) &#123; echo &quot;nohost&quot;; &#125; elseif (strcmp($error, &quot;Passwords do not match&quot;) === 0) &#123; echo &quot;badauth&quot;; &#125; elseif (strcmp($error, &quot;No Records updated. A record not Found;&quot;) === 0) &#123; echo &quot;nohost&quot;; &#125; else &#123; echo &quot;911 [&quot;.$error.&quot;]&quot;; &#125;&#125; else &#123; echo &quot;good&quot;;&#125; ***Make sure when you copy the first script that there aren’t any extra # inserted into VI. I had this issue and had to remove them from each line. 4b.Press ESC and then type :set nopaste 5.Save and quit by pressing CTRL+C then :wq 6.Run: 1sudo chmod 755 /usr/syno/bin/ddns/namecheap.php 7.Run: 1sudo vi /etc.defaults/ddns_provider.conf 8.For insert mode press i 9.Go to the bottom and paste the following: 123[Namecheap] modulepath=/usr/syno/bin/ddns/namecheap.php queryurl=https://dynamicdns.park-your-domain.com/ 10.Save and quit by pressing CTRL+C then :wq 11.In the DSM web interface, open the DDNS menu 12.Click Add Hostname: yourDomain.tld Username/Email: @ Password: nameCheap DDNS password Reference:Site]]></content>
+      <tags>
+        <tag>DSM</tag>
+        <tag>DDNS</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[用sed替换跨行内容]]></title>
+    <url>%2F2017%2F07%2F06%2FSkills%2Fsed-multipleline%2F</url>
+    <content type="text"><![CDATA[Note: 转载自:http://www.fwolf.com/blog/post/346 sed是*nix下方便的行编辑工具，经常用来替换文件的内容，sed一般都是处理单行的，但通过它的一些内建功能，也能实现跨行替换（即要替换的内容有多行内容）。 解决方法主要来自网上搜到的一篇文章，但文中的大侠并没有解释得特别清楚，我对照着其他两个更晦涩的例子（一、二），结合man搞懂了之后，记录于此。 假设我们的目标文件test内容是这样的： 1234file content aabbcc&lt;&lt;&lt;comment part 1 comment part 2&gt;&gt;&gt; ddeeff 现在需要把[[[…]]]这一段替换为“COMMENT”（为了说明的必要，没有用容易和正则相混淆的字符比如//*{}[]等来举例子），那么sed语法应当是： 12345678910:begin/&lt;&lt;&lt;/,/&gt;&gt;&gt;/ &#123; /&gt;&gt;&gt;/! &#123; $! &#123; N; b begin &#125; &#125; s/&lt;&lt;&lt;.*&gt;&gt;&gt;/COMMENT/;&#125; 上述语句存储在test.sed中，那么执行的方式和结果就是： 1234$ sed -f test.sed test file content aabbccCOMMENT ddeeff 把正则直接写到命令里面也可以，用“;”来分隔命令即可： 1234$ sed -e ":begin; /&lt;&lt;&lt;/,/&gt;&gt;&gt;/ &#123; /&gt;&gt;&gt;/! &#123; $! &#123; N; b begin &#125;; &#125;; s/&lt;&lt;&lt;.*&gt;&gt;&gt;/COMMENT/; &#125;;" test file content aabbccCOMMENT ddeeff 注意右花括号之后也要加上分号“;”，如果再加上-i参数就可以直接把改动写到原文件中去了。 怎么样？看懂了么？我来详细说明吧，看那个多行命令的test.sed文件的内容： 首先花括号{}代表命令块的开始，类似c的语法，后面就不再说了。 :begin，这是一个标号，man中叫做label，也就是跳转标记，供b和t命令用，本例中使用了b命令。 /&lt;&lt;&lt;/,/&gt;&gt;&gt;/，这是一个地址范围（Addresses），后面{}中的命令只对地址范围之间的内容使用。其中逗号前面的部分是开始地址，逗号后面是结束地址，都是正则表达式。由于sed是“流”式“行”处理，所以结束地址是可以省略的，即如果地址的结束范围不存在，那么将一直处理到文件结尾。本例中使用这个地址范围主要是缩小处理的数据量，因为虽然后面用N命令把对一行的处理扩展为了多行，但如果从文件开头一直N扩展到&lt;&lt;&lt;出现为止，buffer中要处理的字符串可能会很长，影响效率。所以去掉这个处理范围也是能够得到正确结果的，比如： 123$ sed -e ":begin; &#123; /&gt;&gt;&gt;/! &#123; $! &#123; N; b begin &#125;; &#125;; s/&lt;&lt;&lt;.*&gt;&gt;&gt;/COMMENT/; &#125;;" testor$ sed -e "&#123;:begin; /&gt;&gt;&gt;/! &#123; $! &#123; N; b begin &#125;; &#125;; s/&lt;&lt;&lt;.*&gt;&gt;&gt;/COMMENT/; &#125;;" test /&gt;&gt;&gt;/!，&gt;&gt;&gt;是要替换内容的结束标记，带上!就是说当一行处理完毕之后，如果没有发现结束标记。。。 $!，$在正则中表示字符串结尾，在sed中代表文件的最后一行，本句和上一句结合起来的意思就是：如果在本行没有发现结束标记，并且当前扫描过的行并不是文件的最后一行。 N;，把下一行的内容追加（append）到缓冲区（pattern）之后，在我们的例子中，在处理aabbcc&lt;&lt;&lt;comment part 1这一行的内容时，就会执行到这里，然后把下一行的内容comment part 2&gt;&gt;&gt;一起放入缓冲区，相当于“合并”成了一行（sed的缓冲区中默认都只会包含一行的内容）。 b begin，由于仍然没有找到结束标记&lt;&lt;&lt;（注意上一条说的缓冲区还没有被处理），所以在这里跳回到标号begin，重新开始命令。如果开始和结束标记之间间隔了多行，那么就会有多次跳转发生。 s/&lt;&lt;&lt;.*&gt;&gt;&gt;/COMMENT/;，终于，/&gt;&gt;&gt;/!不再匹配成功，也就是我们已经找到了结束标记，那么用s命令来进行替换。如果开始和结束标记在一行的话，就会越过上面那些复杂的处理，直接执行到这里了。 介绍完毕，收工。]]></content>
+      <tags>
+        <tag>shell</tag>
+        <tag>linux</tag>
+        <tag>sed</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[pyenv]]></title>
+    <url>%2F2017%2F06%2F19%2FSkills%2Fpyenv%2F</url>
+    <content type="text"><![CDATA[12345678# install pyenvcurl -L https://raw.github.com/yyuu/pyenv-installer/master/bin/pyenv-installer | bash# install dependent librariessudo apt install libsqlite3 libbz2-dev libreadline-dev# install specific version of pythonpyenv install 3.6.1pyenv virtualenv 3.6.1 xxxpyenv activate xxx]]></content>
+      <tags>
+        <tag>python</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[speed up the zsh under the git repo]]></title>
+    <url>%2F2017%2F04%2F20%2FSkills%2Fspeed-up-git-zsh%2F</url>
+    <content type="text"><![CDATA[¶Method 1 Uncomment the DISABLE_UNTRACKED_FILES_DIRTY=&quot;true&quot; inside the .zshrc ¶Method 2 Global configuration 1git config --global --add oh-my-zsh.hide-dirty 1 for some of the repo 1git config --add oh-my-zsh.hide-dirty 1]]></content>
+      <tags>
+        <tag>zsh</tag>
+        <tag>git</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[List loaded linux module parameter values]]></title>
+    <url>%2F2017%2F02%2F19%2FSkills%2Flist-kernel-module-params%2F</url>
+    <content type="text"><![CDATA[List loaded linux module parameter values 12345678910cat /proc/modules | cut -f 1 -d " " | while read module; do \ echo "Module: $module"; \ if [ -d "/sys/module/$module/parameters" ]; then \ ls /sys/module/$module/parameters/ | while read parameter; do \ echo -n "Parameter: $parameter --&gt; "; \ cat /sys/module/$module/parameters/$parameter; \ done; \ fi; \ echo; \done]]></content>
+      <tags>
+        <tag>shell</tag>
+        <tag>skills</tag>
+        <tag>linux</tag>
+        <tag>snippets</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[docker]]></title>
+    <url>%2F2017%2F01%2F05%2FSkills%2Fdocker%2F</url>
+    <content type="text"><![CDATA[¶Install 1234sudo sh -c "wget -qO- https://get.docker.io/gpg | apt-key add -"sudo sh -c "echo deb http://get.docker.io/ubuntu docker main &gt; /etc/apt/sources.list.d/docker.list"sudo apt-get updatesudo apt-get install lxc-docker ¶增加用户到docker组 1sudo usermod jemyzhang -G docker -a ¶Build and Run 123docker build -t ubuntu-1004-qt .docker run -i -t ubuntu10.04x32 /bin/bashdocker run -i -t -d -v `pwd`/../workspace:/home/workspace -v `pwd`/../opt:/opt ubuntu10.04x32 /etc/init.d/ssh start -D ¶Get ip 12docker inspect 2c74 | grep IPssh xxx@IP ¶提交更改: 将一个container固化为一个新的image，后面的repo:tag可选 1docker commit &lt;container&gt; [repo:tag] ¶.bashrc无效的解决方法 1234567workspace@2c7404e9deae:~$ cat .bash_profile #!/bin/bash if [ -f ~/.bashrc ]; then . ~/.bashrc fi ¶退出： 1docker rm `docker ps -a | grep Exited | awk '&#123;print $1&#125;'` ¶删除镜像： 1docker images --no-trunc| grep none | awk '&#123;print $3&#125;' | xargs -r docker rmi ¶常用命令 总结一下常用命令: 其中&lt;&gt;阔起来的参数为必选，[]阔起来为可选 docker version 查看docker的版本号，包括客户端、服务端、依赖的Go等 docker info 查看系统(docker)层面信息，包括管理的images, containers数等 docker search 在docker index中搜索image docker pull 从docker registry server 中下拉image docker push &lt;image|repository&gt; 推送一个image或repository到registry docker push &lt;image|repository&gt;:TAG 同上，指定tag docker inspect &lt;image|container&gt; 查看image或container的底层信息 docker images TODO filter out the intermediate image layers (intermediate image layers 是什么) docker images -a 列出所有的images docker ps 默认显示正在运行中的container docker ps -l 显示最后一次创建的container，包括未运行的 docker ps -a 显示所有的container，包括未运行的 docker logs 查看container的日志，也就是执行命令的一些输出 docker rm &lt;container…&gt; 删除一个或多个container docker rm docker ps -a -q 删除所有的container docker ps -a -q | xargs docker rm 同上, 删除所有的container docker rmi &lt;image…&gt; 删除一个或多个image docker start/stop/restart 开启/停止/重启container docker start -i 启动一个container并进入交互模式 docker attach attach一个运行中的container docker run 使用image创建container并执行相应命令，然后停止 docker run -i -t /bin/bash 使用image创建container并进入交互模式, login shell是/bin/bash docker run -i -t -p &lt;host_port:contain_port&gt; 将container的端口映射到宿主机的端口 docker commit [repo:tag] 将一个container固化为一个新的image，后面的repo:tag可选 docker build 寻找path路径下名为的Dockerfile的配置文件，使用此配置生成新的image docker build -t repo[:tag] 同上，可以指定repo和可选的tag docker build - &lt; 使用指定的dockerfile配置文件，docker以stdin方式获取内容，使用此配置生成新的image docker port 查看本地哪个端口映射到container的指定端口，其实用docker ps 也可以看到 ¶杀死所有正在运行的容器 1docker kill $(docker ps -a -q) ¶删除所有已经停止的容器 1docker rm $(docker ps -a -q) ¶删除所有未打 dangling 标签的镜像 1docker rmi $(docker images -q -f dangling=true) ¶删除所有镜像 1docker rmi $(docker images -q)]]></content>
+      <tags>
+        <tag>docker</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[ss-go build]]></title>
+    <url>%2F2016%2F12%2F27%2FSkills%2Fss-go-build%2F</url>
+    <content type="text"><![CDATA[1234567mkdir -p gopath/src/github.com/orvice/shadowsocks-gocd gopath/src/github.com/orvice/shadowsocks-gogit clone git@github.com:jemyzhang/shadowsocks-go.git .export GOPATH=~/gopathcd mugo getgo build]]></content>
+      <tags>
+        <tag>go</tag>
+        <tag>shadowsocks</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[qt5中调用fcitx输入法]]></title>
+    <url>%2F2016%2F11%2F08%2FSkills%2Ffcitx-in-qt5%2F</url>
+    <content type="text"><![CDATA[12sudo apt install libfcitx-qt5-1sudo cp /usr/lib/x86_64-linux-gnu/qt5/plugins/platforminputcontexts/libfcitxplatforminputcontextplugin.so lib64/qt5/plugins/platforminputcontexts]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>qt</tag>
+        <tag>fcitx</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[vim clipboard over ssh]]></title>
+    <url>%2F2016%2F10%2F20%2FSkills%2Fvim-clipboard-over-ssh%2F</url>
+    <content type="text"><![CDATA[The “clipboard” is a feature of X11, so you will need to enable “X11 forwarding” for the SSH connection in “trusted” mode: 1$ ssh -Y myserver (By default, X11 is forwarded in “untrusted” mode, which is somewhat too restrictive. -Y disables the restrictions.) Also make sure the server has xauth and a X11-capable version of vim installed. You can use xsel -o and xsel -o -b to verify that the clipboard can be accessed. To make it permanent, add the following to your local ~/.ssh/config: 123Host myserver ForwardX11 yes ForwardX11Trusted yes Reference:HERE]]></content>
+      <tags>
+        <tag>ssh</tag>
+        <tag>clipboard</tag>
+        <tag>vim</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[cmake中link_directories无效]]></title>
+    <url>%2F2016%2F10%2F14%2FSkills%2Fcmake%E4%B8%ADlink_directories%E6%97%A0%E6%95%88%2F</url>
+    <content type="text"><![CDATA[1234add_executable(debug $&#123;SOURCE_FILES&#125;)link_directories(libxxx/lib)target_link_libraries(debug xxxx) 一直提示找不到xxx库, 解决方法很简单, 就是把add_executable放到link_directories后面就可以了-_-! 1234link_directories(libxxx/lib)add_executable(debug $&#123;SOURCE_FILES&#125;)target_link_libraries(debug xxxx)]]></content>
+      <tags>
+        <tag>cmake</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Use password to protect a tgz file]]></title>
+    <url>%2F2016%2F09%2F30%2FSkills%2Fpassword-protect-a-tgz-file%2F</url>
+    <content type="text"><![CDATA[1234# encryptgpg -o documents.tgz.gpg --symmetric documents.tgz# decryptgpg documents.tgz.gpg]]></content>
+      <categories>
+        <category>Linux</category>
+      </categories>
+      <tags>
+        <tag>tgz</tag>
+        <tag>passwd</tag>
+        <tag>gpg</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[tcpdump for android]]></title>
+    <url>%2F2016%2F09%2F28%2FSkills%2Ftcpdump_android%2F</url>
+    <content type="text"><![CDATA[tcpdump for android[1] 1/data/local/tcpdump -p -vv -s 0 -w /sdcard/capture.pcap https://www.zhihu.com/question/20467503/answer/22758575 ↩]]></content>
+      <tags>
+        <tag>Android</tag>
+        <tag>Skills</tag>
+        <tag>TCPIP</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Compact vbox disk]]></title>
+    <url>%2F2016%2F09%2F28%2FSkills%2Fcompact-vbox-disk%2F</url>
+    <content type="text"><![CDATA[Compact vbox disk run defrag in the guest (Windows) nullify free space: With Linux guest run this: 12sudo dd if=/dev/zero of=/bigemptyfile bs=4096ksudo rm -rf /bigemptyfile With Windows guest, download SysinternalsSuite and run this: 1sdelete –z shutdown the guest VM now run VBoxManage’s compact command 1VBoxManage.exe modifyhd thedisk.vdi --compact]]></content>
+      <tags>
+        <tag>virtualbox</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[查看线程]]></title>
+    <url>%2F2016%2F09%2F28%2FSkills%2Fget_subtask%2F</url>
+    <content type="text"><![CDATA[查看线程 1awk '&#123;print $1,$2,$14,$15&#125;' /proc/2907/task/*/stat]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>shell</tag>
+        <tag>threads</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[apt-get upgrade排除软件包]]></title>
+    <url>%2F2016%2F09%2F28%2FSkills%2Fapt-package-exclusion%2F</url>
+    <content type="text"><![CDATA[apt-get upgrade排除软件包 1sudo apt-mark hold xxx]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>apt</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[install the latest node js in ubuntu]]></title>
+    <url>%2F2016%2F09%2F14%2FSkills%2Fnode.js%2F</url>
+    <content type="text"><![CDATA[install the latest node js in ubuntu: 12curl -sL https://deb.nodesource.com/setup_6.x | sudo -E bash -sudo apt-get install -y nodejs]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>nodejs</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Xfce设置代理Proxy]]></title>
+    <url>%2F2016%2F09%2F09%2FSkills%2FXfce%E8%AE%BE%E7%BD%AE%E4%BB%A3%E7%90%86Proxy%2F</url>
+    <content type="text"><![CDATA[¶proxyon.sh 123456789101112131415161718192021222324252627282930313233343536373839if [ $(id -u) -ne 0 ]; then echo "This script must be run as root"; exit 1;fiif [ $# -eq 2 ] then gsettings set org.gnome.system.proxy mode 'manual' ; gsettings set org.gnome.system.proxy.http host '$1'; gsettings set org.gnome.system.proxy.http port $2; grep PATH /etc/environment &gt; lol.t; printf \ "http_proxy=http://$1:$2/\n\ https_proxy=http://$1:$2/\n\ ftp_proxy=http://$1:$2/\n\ no_proxy=\"localhost,127.0.0.1,localaddress,.localdomain.com\"\n\ HTTP_PROXY=http://$1:$2/\n\ HTTPS_PROXY=http://$1:$2/\n\ FTP_PROXY=http://$1:$2/\n\ NO_PROXY=\"localhost,127.0.0.1,localaddress,.localdomain.com\"\n" &gt;&gt; lol.t; cat lol.t &gt; /etc/environment; printf \ "Acquire::http::proxy \"http://$1:$2/\";\n\ Acquire::ftp::proxy \"ftp://$1:$2/\";\n\ Acquire::https::proxy \"https://$1:$2/\";\n" &gt; /etc/apt/apt.conf.d/95proxies; rm -rf lol.t; else printf "Usage $0 &lt;proxy_ip&gt; &lt;proxy_port&gt;\n";fi ¶proxyoff.sh 12345678910111213if [ $(id -u) -ne 0 ]; then echo "This script must be run as root"; exit 1;figsettings set org.gnome.system.proxy mode 'none' ;grep PATH /etc/environment &gt; lol.t;cat lol.t &gt; /etc/environment;printf "" &gt; /etc/apt/apt.conf.d/95proxies;rm -rf lol.t; ¶使用方法如下： 1234$ sudo ./proxyon.sh 10.2.20.17 8080OR$ sudo ./proxyon.sh myproxy.server.com 8080$ sudo ./proxyoff.sh 或者: 1234567891011121314151617181920212223242526272829303132333435363738394041424344 function proxy_on() &#123; export no_proxy="localhost,127.0.0.1,localaddress,.localdomain.com" if (( $# &gt; 0 )); then valid=$(echo $@ | sed -n 's/\([0-9]\&#123;1,3\&#125;.\)\&#123;4\&#125;:\([0-9]\+\)/&amp;/p') if [[ $valid != $@ ]]; then &gt;&amp;2 echo "Invalid address" return 1 fi export http_proxy="http://$1/" export https_proxy=$http_proxy export ftp_proxy=$http_proxy export rsync_proxy=$http_proxy echo "Proxy environment variable set." return 0 fi echo -n "username: "; read username if [[ $username != "" ]]; then echo -n "password: " read -es password local pre="$username:$password@" fi echo -n "server: "; read server echo -n "port: "; read port export http_proxy="http://$pre$server:$port/" export https_proxy=$http_proxy export ftp_proxy=$http_proxy export rsync_proxy=$http_proxy export HTTP_PROXY=$http_proxy export HTTPS_PROXY=$http_proxy export FTP_PROXY=$http_proxy export RSYNC_PROXY=$http_proxy&#125;function proxy_off()&#123; unset http_proxy unset https_proxy unset ftp_proxy unset rsync_proxy echo -e "Proxy environment variable removed."&#125;]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>xfce</tag>
+        <tag>proxy</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[N1 root attemps]]></title>
+    <url>%2F2016%2F09%2F09%2FOthers%2FN1%20root%20attemps%2F</url>
+    <content type="text"><![CDATA[¶compile 12export PATH=/opt/android-ndk-r12b:$PATHndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk NDK_APPLICATION_MK=./Application.mk ¶kallsyms ¶Method(rooted) 1echo 0 &gt; /proc/sys/kernel/kptr_restrict sysctl ¶import kallsyms to IDA import_symbols.py: 123456789101112131415161718192021import idaapiimport idautilsimport idcdef do_rename(l): splitted = l.split() straddr = splitted[0] strname = splitted[2].replace("\r", "").replace("\n", "") eaaddr = int(straddr, 16) idc.MakeCode(eaaddr) idc.MakeFunction(eaaddr) idc.MakeNameEx(int(straddr, 16), strname, idc.SN_NOWARN)if __name__ == "__main__": Message("Hello IDC") f = open( "D:\\TOP1_201601\\android\\exploits\\kernel_symbols.txt", "r") for l in f: do_rename(l) f.close() File-&gt;Script file-&gt;import ¶unpack zImage find offset of “1F8B08” dd if=zImage of=image.gz bs=1 skip=OFFSET gzip -d image.gz ¶hack steps ¶disable selinux selinux_enforce=0 selinux_enabled=0 selinux_disabled=1 ¶hack capable check security_ops-&gt;capable return 0 ffffffff838ce4b0 + 0x50 replace with (strnstr) ¶disable selinux on start androidboot.selinux=permissive (cmdline) ¶get stock recovery of FMB19 1applypatch -b /system/etc/recovery-resource.dat /data/local/tmp/boot.img /data/local/tmp/recovery.img 93900d13238fc8badc374756434aac1f5efd2d2c 12563768 20a80f3b8e17f0dbbc196082299b26bf6d816a90:/system/recovery-from-boot.p ¶create recovery image 1234# in ramdisk folderfind . | cpio -o -H newc | gzip &gt; ../ramdisk_twrp.cpio.gz# in recovery folder../../mkbootimg/mkbootimg --kernel recovery.img-zImage --ramdisk ramdisk_twrp.cpio.gz --cmdline "init=/init pci=noearly loglevel=0 vmalloc=256M androidboot.hardware=mofd_v1 watchdog.watchdog_thresh=60 androidboot.spid=xxxx:xxxx:xxxx:xxxx:xxxx:xxxx androidboot.serialno=01234567890123456789 gpt snd_pcm.maximum_substreams=8 panic=15 ip=50.0.0.2:50.0.0.1::255.255.255.0::usb0:on androidboot.selinux=permissive debug_locks=0 n_gsm.mux_base_conf=\"ttyACM0,0 ttyXMM0,1\" bootboost=1" --pagesize 2048 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --second recovery.img-second --second_offset 0x00f00000 -o ../n1_twrp_rec.img ¶Trouble shoot ¶usb not recognized in recovery idVendor&amp;idProduct Table: Mode idVendor idProduct fastboot 8707 0fff sideload 8087 0a5d adb,mtp 0489 1ab1 mtp 0489 1ab0 adb 18d1 4ee7 ¶Appendix ¶ROM Download url 国行版本A5CNXXX下载： ● A5CN114 ;彩 蛋 （原始）2014-11-18 ● A5CN204 ;316M （完整）2015-02-04 ● A5CN20C ;17.4M （补丁）2015-02-09 ● A5CN21B ;21.6M （补丁）2015-02-25 ● A5CN30B ;14.9M （补丁）2015-03-09 ● A5CN315 ;18.6M （补丁）2015-03-21 ● A5CN403 ;32.3M （补丁）2015-04-02 ● A5CN410 ;312M （完整）2015-04-16 ● A5CN507 ;348M （完整）2015-05-07 ● A5CN51C ;19.9M （补丁）2015-05-27 ★ A5CN701 ;471M （完整）2015-07-01 ★ A5CNA13 ;67.98M （补丁）2015-10-19 ★ A5CNB19 ;479.01M （完整）2015-11-25 台版A5FMXXX下载： ● A5FM508 ;625.59M （完整）2015-05-08 ● 5FM51C ;16.8M （补丁）2015-05-28 ★ A5FM91E ;848.38M （完整）2015-09-30 ★ A5FMB19 ;816.04M （完整）2015-11-25]]></content>
+      <tags>
+        <tag>Android</tag>
+        <tag>root</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Get Call stacks]]></title>
+    <url>%2F2016%2F09%2F09%2FSkills%2Fget-call-stacks%2F</url>
+    <content type="text"><![CDATA[123456789101112131415get_stack() &#123; STACK="" # to avoid noise we start with 1 to skip get_stack caller local i local stack_size=$&#123;#FUNCNAME[@]&#125; for (( i=1; i&lt;$stack_size ; i++ )); do local func="$&#123;FUNCNAME[$i]&#125;" [ x$func = x ] &amp;&amp; func=MAIN local linen="$&#123;BASH_LINENO[(( i - 1 ))]&#125;" local src="$&#123;BASH_SOURCE[$i]&#125;" [ x"$src" = x ] &amp;&amp; src=non_file_source STACK+=$'\n'" "$func" "$src" "$linen done&#125;]]></content>
+      <tags>
+        <tag>shell</tag>
+        <tag>skills</tag>
+        <tag>linux</tag>
+        <tag>snippets</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[No icon display on status bar]]></title>
+    <url>%2F2016%2F09%2F09%2FSkills%2FDropbox-NoIcon%2F</url>
+    <content type="text"><![CDATA[No icon display on status bar 123dropbox stop &amp;&amp; DBUS_SESSION_BUS_ADDRESS=&quot;&quot; dropbox start# - or -dropbox stop &amp;&amp; dbus-launch dropbox start]]></content>
+      <tags>
+        <tag>trouble</tag>
+        <tag>ubuntu</tag>
+        <tag>dropbox</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Compile issues]]></title>
+    <url>%2F2016%2F09%2F09%2FSkills%2FCompile-Trouble-Shoots%2F</url>
+    <content type="text"><![CDATA[Compile issue ¶Where is PATH_MAX defined in Linux? 1#include &lt;linux/limits.h&gt;]]></content>
+      <tags>
+        <tag>trouble</tag>
+        <tag>c</tag>
+        <tag>compile</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Image convert]]></title>
+    <url>%2F2016%2F08%2F09%2FSkills%2Fsystem-image-convert%2F</url>
+    <content type="text"><![CDATA[¶unpack android boot image 123456git clone https://github.com/osm0sis/mkbootimg.gitmkdir kernel &amp;&amp; mkbootimg/unpackbootimg -i boot.img -o kernelcd kerneldd bs=64 skip=1 if=boot.img-ramdisk.gz of=a.gzmkdir ramdisk &amp;&amp; cd ramdiskgunzip -c ../a.gz | cpio -i ¶raw to ext4 12git clone https://github.com/xpirt/sdat2img.gitpython sdat2img/sdat2img.py system.transfer.list system.new.dat system.new.ext4 Ubuntu x64 - Guide ¶Step 1 - Decompressing = DAT (sparse data) -&gt; EXT4 raw image) We’re now using sdat2img binary, the usage is very simple (make sure you have python 3.x installed): 1./sdat2img.py &lt;transfer_list&gt; &lt;system_new_file&gt; &lt;system_ext4&gt; &lt;transfer_list&gt; = input, system.transfer.list from rom zip &lt;system_new_file&gt; = input, system.new.dat from rom zip &lt;system_ext4&gt; = output ext4 raw image file and a quick example: 1./sdat2img.py system.transfer.list system.new.dat system.img by running this command you will get as output the file my_new_system.img which is the raw ext4 image. ¶Step 2 - Decompress EXT4 (raw image) -&gt; OUTPUT folder -&gt; Compress EXT4 (raw image) Now we need to mount or ext4 raw image into an output folder so we can see apks/jars etc. To do this we need to type this command: sudo mount -t ext4 -o loop system.img output/ As you can see there is a new folder called output which we can edit/modify/delete your files (not able to? see here) Now we need to compress it back to a raw ext4 image, to do this we need the make_ext4fs binary. Make sure you have thefile_contexts file (taken from the Rom zip) inside the make_ext4fs path. Then type this (got issues? see here) 1./make_ext4fs -T 0 -S file_contexts -l 1073741824 -a system system_new.img output/ You will get the new raw ext4 image called ‘system_new.img’ ready for the next step. ¶Step 3 - Converting = EXT4 (raw image) -&gt; DAT (sparse data) Now we need the rimg2sdat binary, the usage is very simple: 1./rimg2sdat &lt;system_img&gt; &lt;system_img&gt; = name of input ext4 raw image file and a quick example: 1./rimg2sdat my_new_system.img As you can see the output is composed by system.transfer.list, (system.patch.dat) &amp; system.new.dat, ready to be replaced inside your Rom zip.]]></content>
+      <tags>
+        <tag>Android</tag>
+        <tag>Image</tag>
+        <tag>Skills</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Android init.rc主要事件以及服务]]></title>
+    <url>%2F2016%2F08%2F09%2FSkills%2FAndroid-init.rc%2F</url>
+    <content type="text"><![CDATA[Action/Service 描述 on early-init 设置init进程以及它创建的子进程的优先级，设置init进程的安全环境 on init 设置全局环境，为cpu accounting创建cgroup(资源控制)挂载点 on fs 挂载mtd分区 on post-fs 改变系统目录的访问权限 on post-fs-data 改变/data目录以及它的子目录的访问权限 on boot 基本网络的初始化，内存管理等等 service servicemanager 启动系统管理器管理所有的本地服务，比如位置、音频、Shared preference等等… service zygote 启动zygote作为应用进程]]></content>
+      <tags>
+        <tag>Android</tag>
+        <tag>System</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Get argument list from cmdline]]></title>
+    <url>%2F2016%2F07%2F11%2FSkills%2FGet-argument-list-from-cmdline%2F</url>
+    <content type="text"><![CDATA[12pid=$(pidof $PROCNAME)cat /proc/$pid/cmdline | xargs -0 echo]]></content>
+      <tags>
+        <tag>ShellScript</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Dump crash info]]></title>
+    <url>%2F2015%2F11%2F26%2FSkills%2Fubuntu-dump-crash%2F</url>
+    <content type="text"><![CDATA[install apport-retrace 1sudo apt-get install apport-retrace usage 1apport-retrace --stdout /var/crash/xxx.crash]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>debug</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[打印预编译宏]]></title>
+    <url>%2F2015%2F11%2F26%2FSkills%2Fprint-macro%2F</url>
+    <content type="text"><![CDATA[12345#define PRINT_MACRO_HELPER(x) #x #define PRINT_MACRO(x) #x&quot;=&quot;PRINT_MACRO_HELPER(x) #pragma message(PRINT_MACRO(MULTI_CACHE)) #pragma message(PRINT_MACRO(_CACHE))]]></content>
+      <tags>
+        <tag>c</tag>
+        <tag>predefine</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[查看MMC分区信息]]></title>
+    <url>%2F2015%2F11%2F26%2FSkills%2Fshow-emmc-partition-in-android%2F</url>
+    <content type="text"><![CDATA[查看块设备列表 1ls -l /dev/block 查看各分区名称 1ls -l /dev/block/platform/[sdhci-tegra.3]/by-name 其中[sdhci-tegra.3]视具体设备而定 查看各分区容量 1cat /sys/class/block/mmcblk0p1/size 显示单位是records，1records=512byte 查看各分区容量 1cat /proc/partitions 显示单位是blocks，1blocks=1K 查看格式和挂载 123cat /etc/fstabdf -ahcat /proc/mounts&quot;]]></content>
+      <tags>
+        <tag>Android</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Android系统手机隐藏代码大全以及进入工程模式]]></title>
+    <url>%2F2015%2F10%2F16%2FSkills%2Fandroid-command-code%2F</url>
+    <content type="text"><![CDATA[1*#*#4636#*#* 显示手机信息、电池信息、电池记录、使用统计数据、WiFi 信息 1*#*#7780#*#* 重设为原厂设定，不会删除预设法度，及 SD 卡档案。 1*2767*3855# 重设为原厂设定，会删除 SD 卡所有档案。 1*#*#34971539#*#* 显示相机相机韧体版本，或更新相机韧体 1*#*#7594#*#* 当长按关机按钮时，会呈现一个切换手机模式的窗口，包含: 静音模式、飞航模式及关机，你可以用以上代码，直接酿成关机按钮。 1*#*#273283*255*663282*#*#* 开启一个能让你备份媒体文件的处所，例如相片、声音及影片等 1*#*#197328640#*#* 启动服务模式，可以测试手机部分设置及更改设定 ¶WLAN、 GPS 及蓝牙测试的代码 123*#*#232339#*#**#*#526#*#**#*#528#*#* WLAN 测试 1*#*#232338#*#* 显示 WiFi MAC 地址 1*#*#1472365#*#* GPS 测试 1*#*#1575#*#* 其它 GPS 测试 1*#*#232331#*#* 蓝牙测试 1*#*#232337#*# 显示蓝牙装置地址 1*#*#8255#*#* 启动 GTalk 服务器 ¶显示手机软件版本的代码 1*#*#4986*2650468#*#* PDA、 Phone、 H/W、 RFCallDate 1*#*#1234#*#* PDA 及 Phone 1*#*#1111#*#* FTA SW 版本 1*#*#2222#*#* FTA HW 版本 1*#*#44336#*#* PDA 、Phone、 CSC、 Build Time、 Changelist number ¶各项硬件测试 1*#*#0283#*#* Packet Loopback 1*#*#0*#*#* LCD 测试 12*#*#0673#*#**#*#0289#*#* Melody 测试 1*#*#0842#*#* 装置测试，例如振动、亮度 1*#*#2663#*#* 触控屏幕版本 1*#*#2664#*#* 触控屏幕测试 1*#*#0588#*#* 接近感应器测试 1*#*#3264#*#* 内存版本]]></content>
+      <tags>
+        <tag>Android</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[vim-powerline在tmux中颜色显示异常的解决方法]]></title>
+    <url>%2F2015%2F08%2F11%2FSkills%2Fpowerline-color-in-vim-in-tmux%2F</url>
+    <content type="text"><![CDATA[安装好Powerline后，好不容易折腾完了字体显示，结果使用vim时，发现在tmux中颜色不正常。 各种折腾，网上说将term设置成screen-256color就行了，但是我在tmux中echo $TERM，就已经是256了。 然后各种搜索，看到一篇文章， 使用tmux -2启动，可以’Force tmux to assume the terminal supports 256 colours’，尝试一下，果然可以： 顺便提一下powerline字体的坑爹事情。install font后，死活都显示框框，各种fc-cache -vf ~/.fonts/, copy fontconfig等等都不行，最后发现，将终端字体设置成Powerline字体就行了，搜遍全网，居然没有提及，简直无语。 另外，通过ssh连接后vim如果要使用poweline，除了上述需求，特别需要注意的是，要set encoding=utf-8，否则也将无法正常显示。]]></content>
+      <tags>
+        <tag>VIM</tag>
+        <tag>Powerline</tag>
+        <tag>TMUX</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[VMDK转换为VDI，并mount]]></title>
+    <url>%2F2015%2F07%2F23%2FSkills%2Fconvert-vmdk2vdi-mountvdi%2F</url>
+    <content type="text"><![CDATA[¶vmdk转换为vdi 1VBoxManage clonehd --format VDI system.vmdk system.vdi ¶mount vdi 下载vdfuse 下载后无需安装，直接解压缩后获取usr目录中的vdfuse mount 12mkdir mntsudo ./vdfuse -a -f system.vdi mnt 可以看到mnt目录下多了几个文件： 然后使用file命令可以看到各分区的类型： 使用对应的命令mount即可。]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>virtualbox</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[tmux相关]]></title>
+    <url>%2F2015%2F07%2F09%2FSkills%2Ftmux-related%2F</url>
+    <content type="text"><![CDATA[清除回滚 Clear rollback leader+:进入Command mode，然后输入clear命令 Enter command mode with leader+:, use the clear command to clear the rollback content. Zoom Panel leader+z]]></content>
+      <tags>
+        <tag>TMUX</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Image Builder创建自己的Openwrt镜像]]></title>
+    <url>%2F2015%2F07%2F03%2FSkills%2FImage%20Builder%E5%88%9B%E5%BB%BA%E8%87%AA%E5%B7%B1%E7%9A%84Openwrt%E9%95%9C%E5%83%8F%2F</url>
+    <content type="text"><![CDATA[¶下载 123wget http://downloads.openwrt.org/barrier_breaker/14.07/ar71xx/nand/OpenWrt-ImageBuilder-ar71xx_nand-for-linux-x86_64.tar.bz2tar xjvf OpenWrt-ImageBuilder-ar71xx_nand-for-linux-x86_64.tar.bz2cd OpenWrt-ImageBuilder-ar71xx_nand-for-linux-x86_64/ ¶配置 ¶预定义的配置 运行make info来获得一个预定义配置的列表 12345678910Current Target: &quot;ar71xx (Generic devices with NAND flash)&quot;Default Packages: base-files libc libgcc busybox dropbear mtd uci opkg netifd fstools kmod-gpio-button-hotplug swconfig kmod-ath9k wpad-mini uboot-envtools dnsmasq iptables ip6tables ppp ppp-mod-pppoe kmod-ipt-nathelper firewall odhcpd odhcp6cAvailable Profiles:WNDR4300: NETGEAR WNDR3700v4/WNDR4300 Packages: kmod-usb-core kmod-usb-ohci kmod-usb2 kmod-ledtrig-usbdevNBG6716: Zyxel NBG 6716 Packages: kmod-rtc-pcf8563 kmod-ath10k 如果不需要更改配置,直接就可以创建image了 1make image PROFILE=WNDR4300 ¶增加/修改配置 针对预编译包文件ar71xx的配置被放在target/linux/ar71xx/nand/profiles中。 编辑netgear.mk,将需要的包添加进去. 1vi target/linux/ar71xx/nand/profiles/netgear.mk 我这里是这样写的: 123456789101112131415161718192021# # Copyright (C) 2009-2013 OpenWrt.org # # This is free software, licensed under the GNU General Public License v2. # See /LICENSE for more information. # define Profile/WNDR4300 NAME:=NETGEAR WNDR3700v4/WNDR4300 PACKAGES:=kmod-usb-core kmod-usb-ohci kmod-usb2 kmod-ledtrig-usbdev \ kmod-usb-storage block-mount kmod-fs-ext4 ntfs-3g nfs-kernel-server \ luci-app-ddns e2fsprogs transmission-web \ luci luci-theme-bootstrap \ curl python python-curl mtr endef define Profile/WNDR4300/Description Package set optimized for the NETGEAR WNDR3700v4/WNDR4300 endef $(eval $(call Profile,WNDR4300)) ¶自定义分区 实现 WNDR4300路由器 overlay分区大于90MB的功能 修改文件target/linux/ar71xx/image/Makefile: 12345wndr4300_mtdlayout=mtdparts=ar934x-nfc:256k(u-boot)ro,256k(u-boot-env)ro,256k(caldata),512k(pot),2048k(language),512k(config),3072k(traffic_meter),2048k(kernel),23552k(ubi),25600k@0x6c0000(firmware),256k(caldata_backup),-(reserved)#改为（将ubi和firmware增加96M，完全使用128M flash）wndr4300_mtdlayout=mtdparts=ar934x-nfc:256k(u-boot)ro,256k(u-boot-env)ro,256k(caldata),512k(pot),2048k(language),512k(config),3072k(traffic_meter),2048k(kernel),121856k(ubi),123904k@0x6c0000(firmware),256k(caldata_backup),-(reserved) ¶文件 一个包含自定义文件的想要加入的目录可以通过使用FILES变量来指定，如果有必要的话自定义文件会替换掉默认已经存在的文件。 123mkdir -p files/etc/config#cp xxxxxmake image PROFILE=WNDR4300 FILES=files/ ¶清理 想要清理临时编译文件和生成的镜像，使用make clean命令。 ¶tftp刷机 1234tftp 192.168.1.1mode binaryput openwrt-ar71xx-nand-wndr4300-ubi-factory.imgquit ¶参考链接 Image Generator (Image Builder) 编译Netgear WNDR4300路由器用Gargoyle（石像鬼）固件]]></content>
+      <categories>
+        <category>Router</category>
+      </categories>
+      <tags>
+        <tag>openwrt</tag>
+        <tag>wndr4300</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[抓取openwrt软件包建立一个软件源镜像]]></title>
+    <url>%2F2015%2F07%2F03%2FSkills%2F%E6%8A%93%E5%8F%96openwrt%E8%BD%AF%E4%BB%B6%E5%8C%85%E5%BB%BA%E7%AB%8B%E4%B8%80%E4%B8%AA%E8%BD%AF%E4%BB%B6%E6%BA%90%E9%95%9C%E5%83%8F%2F</url>
+    <content type="text"><![CDATA[最近上海电信抽风, Openwrt官方源几乎不可访问, 但是路由器最近被折腾坏了,重刷了Openwrt,结果安装ddns等软件时就苦逼了, opkg update半小时没有结束-_-! 网上各种搜索, 然后找到了这个文章建立一个Openwrt软件源的镜像, 其中带有一个python的grabber源码, 测试一下,发现却不适用WNDR4300 nand的镜像,因为这个镜像是分层目录的,所以就有了下面的修改版. 直接下载源码 12345678910111213141516171819202122232425262728293031323334353637383940414243444546474849505152#!/usr/bin/env python # -*- coding: utf-8 -*-# # Openwrt Package Grabber # # Copyright (C) 2014 http://shuyz.com# modified by jemyzhang@2015.7# # Usage:# for WNDR4300/3700:# python openwrt_package_grabber.py http://downloads.openwrt.org/barrier_breaker/14.07/ar71xx/nand/packages/ ./packagesimport urllib2import reimport osdef save_packages(url, location): location = os.path.abspath(location) + os.path.sep if not os.path.exists(location): os.makedirs(location) print &apos;fetching package list from &apos; + url content = urllib2.urlopen(url, timeout=15).read() print &apos;packages list ok, analysing...&apos; pattern = r&apos;&lt;a href=&quot;(.*?)&quot;&gt;&apos; items = re.findall(pattern, content) cnt = 0 for item in items: if item == &apos;../&apos;: continue elif item[-1] == &apos;/&apos;: save_packages(url + item, location + item) else: cnt += 1 item = item.replace(&apos;%2b&apos;, &apos;+&apos;) print &apos;downloading item %d: &apos; % (cnt) + item if os.path.isfile(location + item): print &apos;file exists, ignored.&apos; else: rfile = urllib2.urlopen(url + item) with open(location + item, &quot;wb&quot;) as code: code.write(rfile.read())if __name__ == &apos;__main__&apos;: import sys if len(sys.argv) &lt; 3: print &apos;Usage: %s [openwrt url] [save location]&apos; else: save_packages(sys.argv[1], sys.argv[2]) 然后找台可以下载的电脑?VPS?下载软件包吧, 既然下载了,那么随便用什么方法,搭一个http服务器就可以继续玩下去了. 感觉还是用python -m SimpleHTTPServer最为方便吧.]]></content>
+      <categories>
+        <category>Router</category>
+      </categories>
+      <tags>
+        <tag>openwrt</tag>
+        <tag>wndr4300</tag>
+        <tag>wndr3700</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[top查看指定进程]]></title>
+    <url>%2F2015%2F07%2F01%2FSkills%2Ftop%E6%9F%A5%E7%9C%8B%E6%8C%87%E5%AE%9A%E8%BF%9B%E7%A8%8B%2F</url>
+    <content type="text"><![CDATA[1top -p `pidof [process name] | sed &apos;s/ /,/g&apos;` 或更简洁: 1top -p `pgrep -d , [process name]`]]></content>
+  </entry>
+  <entry>
+    <title><![CDATA[Openwrt 相关]]></title>
+    <url>%2F2015%2F06%2F28%2FSkills%2FOpenwrt-%E7%9B%B8%E5%85%B3%2F</url>
+    <content type="text"><![CDATA[配置IP地址 12uci set network.wan.proto=dhcpuci set network.lan.ipaddr=192.168.11.1 安装更新 下载升级包 123cd /tmpwget http://downloads.openwrt.org/snapshots/trunk/ar71xx/openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-sysupgrade.bin wget http://downloads.openwrt.org/snapshots/trunk/ar71xx/md5sums 检测md5 1md5sum -c md5sums 升级 1sysupgrade -v /tmp/openwrt-ar71xx-generic-wzr-hp-g300nh-squashfs-sysupgrade.bin 安装软件 ¶安装luci 安装luci-web 123opkg updateopkg install luciopkg install luci-theme-openwrt 配置端口 1234uci delete uhttpd.main.listen_httpuci commituci set uhttpd.main.listen_http=192.168.1.1:80uci commit 重启httpd 1/etc/init.d/uhttpd restart ¶安装USB挂载支持 12opkg updateopkg install kmod-usb-storage block-mount kmod-fs-ext4 ntfs-3g ¶安装其他软件 12opkg install transmission-web samba36-server minidlna nfs-kernel-serveropkg install openssh-sftp-server ¶升级所有包 1opkg upgrade $(opkg list-upgradable|awk &apos;&#123;print $1&#125;&apos;) tftp刷机[WZR-HP-G300NH] 在Ubuntu上 12sudo ifconfig eth0 192.168.11.2 sudo arp -s 192.168.11.1 02:AA:BB:CC:DD:20 拔掉路由电源、 在终端输入: 1234567891011tftp tftp&gt; verbose 提示Verbose mode on. tftp&gt; binary 提示 mode set to octet. tftp&gt; trace 提示 Packet tracing on. tftp&gt; rexmt 1 tftp&gt; timeout 60 tftp&gt; connect 192.168.11.1 tftp&gt; put 1.bin]]></content>
+      <categories>
+        <category>Router</category>
+      </categories>
+      <tags>
+        <tag>openwrt</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Trapping ctrl-c in Bash]]></title>
+    <url>%2F2015%2F06%2F17%2FSkills%2FTrapping-ctrl-c-in-Bash%2F</url>
+    <content type="text"><![CDATA[You can use the trap builtin to handle a user pressing ctrl-c during the execution of a Bash script. e.g. if you need to perform some cleanup functions. 12345678910111213#!/bin/bash# trap ctrl-c and call ctrl_c()trap ctrl_c INTfunction ctrl_c() &#123; echo &quot;** Trapped CTRL-C&quot;&#125;for i in `seq 1 5`; do sleep 1 echo -n &quot;.&quot;done]]></content>
+      <tags>
+        <tag>bash</tag>
+        <tag>shell</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[Crossover 使用系统默认浏览器打开网页]]></title>
+    <url>%2F2015%2F05%2F12%2FSkills%2FCrossover-%E4%BD%BF%E7%94%A8%E7%B3%BB%E7%BB%9F%E9%BB%98%E8%AE%A4%E6%B5%8F%E8%A7%88%E5%99%A8%E6%89%93%E5%BC%80%E7%BD%91%E9%A1%B5%2F</url>
+    <content type="text"><![CDATA[更改注册表 Windows Registry Editor Version 5.00 [HKEY_CLASSES_ROOT\http\shell\open\command] @=&quot;“C:\windows\system32\winebrowser.exe” -nohome %1&quot; [HKEY_CLASSES_ROOT\https\shell\open\command] @=&quot;“C:\windows\system32\winebrowser.exe” -nohome %1&quot; 替换iexplore.exe.so 123cd /usr/lib/wine/ [crossover: /opt/cxoffice/lib/wine/]sudo mv iexplore.exe.so iexplore.exe.so.baksudo ln -s winebrowser.exe.so iexplore.exe.so]]></content>
+      <tags>
+        <tag>ubuntu</tag>
+        <tag>wine</tag>
+        <tag>crossover</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[去除android 5.0网络感叹号]]></title>
+    <url>%2F2015%2F04%2F26%2FSkills%2F%E5%8E%BB%E9%99%A4android-5-0%E7%BD%91%E7%BB%9C%E6%84%9F%E5%8F%B9%E5%8F%B7%2F</url>
+    <content type="text"><![CDATA[123adb shellsusettings put global captive_portal_server connect.rom.miui.com]]></content>
+      <tags>
+        <tag>Android</tag>
+        <tag>Nexus5</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title><![CDATA[nexus 5 破解电信]]></title>
+    <url>%2F2015%2F03%2F31%2FSkills%2Fnexus-5-%E7%A0%B4%E8%A7%A3%E7%94%B5%E4%BF%A1%2F</url>
+    <content type="text"><![CDATA[方案一： 无需root 线刷或者卡刷 清空数据后需要刷入_cdma.zip；（线刷需要特殊步骤见① [1]） 带卡开机，选择不激活移动网络，启动等待1. 2分钟后关机； 拔卡，恢复EFS，不插卡开机，可能会报告PHONE.APK异常停止，忽略； 插卡，等待1. 2分钟； 关机恢复EFS； 开机，等待几分钟，OK，注意3G标志可能需要等待几分钟. 方案二 需要root，不需要efs备份数据 线刷的5.01，双清后开机，把cdma.zip放到手机里，安装twrp，在twrp里清空data（只选这一项），之后立刻刷入cdma.zip。 root 进系统后， 电话进程FC的话，不用管，执行命令 1adb shell &quot;su -c setprop ril.subscription.types NV,RUIM&quot; 进入移动网络设置，应该会多了一个CDMA订阅的，选择RUIM模式 打一通电话，比如免费的10000客服 （此步骤不可跳过），可以正常接通，不会提示“你的号码暂未开通这项业务” 重启手机，再试试电话，3G能不能用了。 ①. 线刷的5.01，双清后开机，把efs文件，cdma.zip放到手机里，安装twrp，在twrp里清空data（只选这一项），之后刷入cdma.zip ↩]]></content>
+      <tags>
+        <tag>Android</tag>
+        <tag>Nexus5</tag>
+      </tags>
+  </entry>
+</search>

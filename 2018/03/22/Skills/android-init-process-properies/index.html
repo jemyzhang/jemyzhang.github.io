@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+
+
+
+  
+
+
+<html class="theme-next mist use-motion" lang="zh-Hans">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2"/>
+<meta name="theme-color" content="#222">
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=6.0.6" rel="stylesheet" type="text/css" />
+
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png?v=6.0.6">
+
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png?v=6.0.6">
+
+
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png?v=6.0.6">
+
+
+  <link rel="mask-icon" href="/images/logo.svg?v=6.0.6" color="#222">
+
+
+
+
+
+
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Mist',
+    version: '6.0.6',
+    sidebar: {"position":"left","display":"post","offset":12,"b2t":false,"scrollpercent":false,"onmobile":false},
+    fancybox: false,
+    fastclick: false,
+    lazyload: false,
+    tabs: true,
+    motion: {"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+  
+
+
+
+
+  <meta name="description" content="本文由 简悦 SimpRead 转码， 原文地址 https://blog.csdn.net/wzy_1988/article/details/44999103  概述 init是一个进程，确切的说，它是Linux系统中用户空间的第一个进程。由于Android是基于Linux内核的，所以init也是Android系统中用户空间的第一个进程。init的进程号是1。作为天字第一号进程，init有很多">
+<meta name="keywords" content="android,system">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Android init进程——属性服务">
+<meta property="og:url" content="http://idaprc.me/2018/03/22/Skills/android-init-process-properies/index.html">
+<meta property="og:site_name" content="Jemy&#39;s Documents">
+<meta property="og:description" content="本文由 简悦 SimpRead 转码， 原文地址 https://blog.csdn.net/wzy_1988/article/details/44999103  概述 init是一个进程，确切的说，它是Linux系统中用户空间的第一个进程。由于Android是基于Linux内核的，所以init也是Android系统中用户空间的第一个进程。init的进程号是1。作为天字第一号进程，init有很多">
+<meta property="og:locale" content="zh-Hans">
+<meta property="og:updated_time" content="2018-03-23T08:41:32.207Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Android init进程——属性服务">
+<meta name="twitter:description" content="本文由 简悦 SimpRead 转码， 原文地址 https://blog.csdn.net/wzy_1988/article/details/44999103  概述 init是一个进程，确切的说，它是Linux系统中用户空间的第一个进程。由于Android是基于Linux内核的，所以init也是Android系统中用户空间的第一个进程。init的进程号是1。作为天字第一号进程，init有很多">
+
+
+
+
+
+
+  <link rel="canonical" href="http://idaprc.me/2018/03/22/Skills/android-init-process-properies/"/>
+
+
+
+<script type="text/javascript" id="page.configurations">
+  CONFIG.page = {
+    sidebar: "",
+  };
+</script>
+
+  <title>Android init进程——属性服务 | Jemy's Documents</title>
+  
+
+
+
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-64202298-1"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-64202298-1');
+</script>
+
+
+
+
+
+
+  <noscript>
+  <style type="text/css">
+    .use-motion .motion-element,
+    .use-motion .brand,
+    .use-motion .menu-item,
+    .sidebar-inner,
+    .use-motion .post-block,
+    .use-motion .pagination,
+    .use-motion .comments,
+    .use-motion .post-header,
+    .use-motion .post-body,
+    .use-motion .collection-title { opacity: initial; }
+
+    .use-motion .logo,
+    .use-motion .site-title,
+    .use-motion .site-subtitle {
+      opacity: initial;
+      top: initial;
+    }
+
+    .use-motion {
+      .logo-line-before i { left: initial; }
+      .logo-line-after i { right: initial; }
+    }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+  
+    
+  
+
+  <div class="container sidebar-position-left page-post-detail">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"> 
+
+<div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">Jemy's Documents</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button aria-label="Toggle navigation bar">
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        
+          
+  <li class="menu-item menu-item-home">
+    <a href="/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-home"></i> <br />Home</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-categories">
+    <a href="/categories/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-th"></i> <br />Categories</a>
+</li>
+
+      
+        
+        
+          
+  <li class="menu-item menu-item-archives">
+    <a href="/archives/" rel="section">
+      <i class="menu-item-icon fa fa-fw fa-archive"></i> <br />Archives</a>
+</li>
+
+      
+
+      
+        <li class="menu-item menu-item-search">
+          
+            <a href="javascript:;" class="popup-trigger">
+          
+            
+              <i class="menu-item-icon fa fa-search fa-fw"></i> <br />Search</a>
+        </li>
+      
+    </ul>
+  
+
+  
+    
+
+    
+    
+      
+      
+    
+      
+      
+    
+      
+      
+    
+    
+
+  
+
+
+  
+
+  
+    <div class="site-search">
+      
+  <div class="popup search-popup local-search-popup">
+  <div class="local-search-header clearfix">
+    <span class="search-icon">
+      <i class="fa fa-search"></i>
+    </span>
+    <span class="popup-btn-close">
+      <i class="fa fa-times-circle"></i>
+    </span>
+    <div class="local-search-input-wrapper">
+      <input autocomplete="off"
+             placeholder="Searching..." spellcheck="false"
+             type="text" id="local-search-input">
+    </div>
+  </div>
+  <div id="local-search-result"></div>
+</div>
+
+
+
+    </div>
+  
+</nav>
+
+
+  
+
+
+
+ </div>
+    </header>
+
+    
+
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://idaprc.me/2018/03/22/Skills/android-init-process-properies/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="jemyzhang">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.jpg">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Jemy's Documents">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">Android init进程——属性服务</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+              <time title="Post created" itemprop="dateCreated datePublished" datetime="2018-03-22T16:00:00+00:00">2018-03-23</time>
+            
+
+            
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <blockquote>
+<p>本文由 <a href="http://ksria.com/simpread/" target="_blank" rel="noopener">简悦 SimpRead</a> 转码， 原文地址 <a href="https://blog.csdn.net/wzy_1988/article/details/44999103" target="_blank" rel="noopener">https://blog.csdn.net/wzy_1988/article/details/44999103</a></p>
+</blockquote>
+<h1><strong>概述</strong></h1>
+<p>init是一个进程，确切的说，它是Linux系统中用户空间的第一个进程。由于Android是基于Linux内核的，所以init也是Android系统中用户空间的第一个进程。<strong>init的进程号是1</strong>。作为天字第一号进程，init有很多重要的工作：</p>
+<ol>
+<li>init提供property service（属性服务）来管理Android系统的属性。</li>
+<li>init负责创建系统中的关键进程，包括zygote。</li>
+</ol>
+<p>以往的文章一上来就介绍init的源码，但是我这里先从这两个主要工作开始。搞清楚这两个主要工作是如何实现的，我们再回头来看init的源码。</p>
+<p>这篇文章主要是介绍init进程的属性服务。</p>
+<blockquote>
+<p>跟init属性服务相关的源码目录如下：</p>
+<ol>
+<li>system/core/init/</li>
+<li>bionic/libc/bionic/</li>
+<li>system/core/libcutils/</li>
+</ol>
+</blockquote>
+<hr>
+<a id="more"></a>
+<h1><strong>属性服务</strong></h1>
+<p>在windows平台上有一个叫做注册表的东西，它可以存储一些类似key/value的键值对。一般而言，系统或者某些应用程序会把自己的一些属性存储在注册表中，即使系统重启或应用程序重启，它还能根据之前在注册表中设置的属性值，进行相应的初始化工作。</p>
+<p>Android系统也提供了类似的机制，称之为属性服务（property service）。应用程序可以通过这个服务查询或者设置属性。我们可以通过如下命令，获取手机中属性键值对。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">adb shell getprop</span><br></pre></td></tr></table></figure>
+<p>例如红米Note手机的属性值如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">[ro.product.device]: [lcsh92_wet_jb9]</span><br><span class="line">[ro.product.locale.language]: [zh]</span><br><span class="line">[ro.product.locale.region]: [CN]</span><br><span class="line">[ro.product.manufacturer]: [Xiaomi]</span><br></pre></td></tr></table></figure>
+<p>在system/core/init/init.c文件的main函数中，跟属性服务的相关代码如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">property_init();</span><br><span class="line">queue_builtin_action(property_service_init_action, &quot;property_service_init&quot;);</span><br></pre></td></tr></table></figure>
+<p>接下来，我们分别看一下这两处代码的具体实现。</p>
+<hr>
+<h1><strong>属性服务初始化</strong></h1>
+<hr>
+<h2 id="创建存储空间"><a class="header-anchor" href="#创建存储空间">¶</a><strong>创建存储空间</strong></h2>
+<p>首先，我们先来看一下property_init函数的源码（/system/core/init/property_service.c）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">void property_init(void)</span><br><span class="line">&#123;</span><br><span class="line">    init_property_area();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>property_init函数中只是简单的调用了init_property_area方法，接下来我们看一下这个方法的具体实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">static int property_area_inited = 0;</span><br><span class="line">static workspace pa_workspace;</span><br><span class="line">static int init_property_area(void)</span><br><span class="line">&#123;</span><br><span class="line">    // 属性空间是否已经初始化</span><br><span class="line">    if (property_area_inited)</span><br><span class="line">        return -1;</span><br><span class="line"></span><br><span class="line">    if (__system_property_area_init())</span><br><span class="line">        return -1;</span><br><span class="line"></span><br><span class="line">    if (init_workspace(&amp;pa_workspace, 0))</span><br><span class="line">        return -1;</span><br><span class="line"></span><br><span class="line">    fcntl(pa_workspace.fd, F_SETFD, FD_CLOEXEC);</span><br><span class="line"></span><br><span class="line">    property_area_inited = 1;</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从init_property_area函数，我们可以看出，函数首先判断属性内存区域是否已经初始化过，如果已经初始化，则返回-1。如果没有初始化，我们接下来会发现有两个关键函数**__system_property_area_init<strong>和</strong>init_workspace**应该是跟内存区域初始化相关。那我们分别分析一下这两个函数具体实现。</p>
+<hr>
+<h3 id="system-property-area-init"><a class="header-anchor" href="#system-property-area-init">¶</a><strong>__system_property_area_init</strong></h3>
+<p>__system_property_area_init函数位于/bionic/libc/bionic/system_properties.c文件中，具体代码实现如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br></pre></td><td class="code"><pre><span class="line">struct prop_area &#123;</span><br><span class="line">    unsigned bytes_used;</span><br><span class="line">    unsigned volatile serial;</span><br><span class="line">    unsigned magic;</span><br><span class="line">    unsigned version;</span><br><span class="line">    unsigned reserved[28];</span><br><span class="line">    char data[0];</span><br><span class="line">&#125;;</span><br><span class="line">typedef struct prop_area prop_area;</span><br><span class="line">prop_area *__system_property_area__ = NULL;</span><br><span class="line"></span><br><span class="line">#define PROP_FILENAME &quot;/dev/__properties__&quot;</span><br><span class="line">static char property_filename[PATH_MAX] = PROP_FILENAME; </span><br><span class="line"></span><br><span class="line">#define PA_SIZE (128 * 1024)</span><br><span class="line"></span><br><span class="line">static int map_prop_area_rw()</span><br><span class="line">&#123;</span><br><span class="line">    prop_area *pa;</span><br><span class="line">    int fd;</span><br><span class="line">    int ret;</span><br><span class="line"></span><br><span class="line">    /**</span><br><span class="line">     * O_RDWR ==&gt; 读写</span><br><span class="line">     * O_CREAT ==&gt; 若不存在，则创建</span><br><span class="line">     * O_NOFOLLOW ==&gt; 如果filename是软链接，则打开失败</span><br><span class="line">     * O_EXCL ==&gt; 如果使用O_CREAT是文件存在，则可返回错误信息</span><br><span class="line">     */</span><br><span class="line">    fd = open(property_filename, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC | O_EXCL, 0444);</span><br><span class="line">    if (fd &lt; 0) &#123;</span><br><span class="line">        if (errno == EACCES) &#123;</span><br><span class="line">            abort();</span><br><span class="line">        &#125;</span><br><span class="line">        return -1;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ret = fcntl(fd, F_SETFD, FD_CLOEXEC);</span><br><span class="line">    if (ret &lt; 0)</span><br><span class="line">        goto out;</span><br><span class="line"></span><br><span class="line">    if (ftruncate(fd, PA_SIZE) &lt; 0)</span><br><span class="line">        goto out;</span><br><span class="line"></span><br><span class="line">    pa_size = PA_SIZE;</span><br><span class="line">    pa_data_size = pa_size - sizeof(prop_area);</span><br><span class="line">    compat_mode = false;</span><br><span class="line"></span><br><span class="line">    // mmap映射文件实现共享内存</span><br><span class="line">    pa = mmap(NULL, pa_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);</span><br><span class="line">    if (pa == MAP_FAILED)</span><br><span class="line">        goto out;</span><br><span class="line"></span><br><span class="line">    /*初始化内存地址中所有值为0*/</span><br><span class="line">    memset(pa, 0, pa_size);</span><br><span class="line">    pa-&gt;magic = PROP_AREA_MAGIC;</span><br><span class="line">    pa-&gt;version = PROP_AREA_VERSION;</span><br><span class="line">    pa-&gt;bytes_used = sizeof(prop_bt);</span><br><span class="line"></span><br><span class="line">    __system_property_area__ = pa;</span><br><span class="line"></span><br><span class="line">    close(fd);</span><br><span class="line">    return 0;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">    close(fd);</span><br><span class="line">    return -1;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">int __system_property_area_init()</span><br><span class="line">&#123;</span><br><span class="line">    return map_prop_area_rw();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>代码比较好理解，主要内容是利用mmap映射property_filename创建了一个共享内存区域，并将共享内存的首地址赋值给全局变量__system_property_area__。</p>
+<blockquote>
+<p>Tips<br>
+主要是想说一下struct prop_area的结构体定义很精妙。特别是<code>char data[];</code>的定义。这里char data[]可以理解成动态数组指针，但是它并没有被占用内存空间。所以计算pa-&gt;bytes_used的时候，并没有计算char data[]占用的空间。</p>
+<p>但是，char data[]又是动态数组，我理解mmap分配的内存，prop_area除了头部占用了部分空间(即sizeof(prop_area))，其他的都是char data去支配了。<br>
+按照我的理解，最终属性也应该分配到char data[]所指向的内存中去。为了验证我的想法，我会跟踪property_set方法的具体实现。</p>
+</blockquote>
+<h4 id="property-set"><a class="header-anchor" href="#property-set">¶</a><strong>property_set</strong></h4>
+<p>property_set是在/system/core/init/property_service.c文件中定义的，具体源码如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line">int property_set(const char *name, const char *value)</span><br><span class="line">&#123;</span><br><span class="line">    prop_info *pi;</span><br><span class="line">    int ret;</span><br><span class="line"></span><br><span class="line">    unsigned int namelen = strlen(name);</span><br><span class="line">    unsigned int valuelen = strlen(value);</span><br><span class="line"></span><br><span class="line">    if (!is_legal_property_name(name, namelen)) return -1;</span><br><span class="line">    if (valuelen &gt;= PROP_VALUE_MAX) return -1;</span><br><span class="line"></span><br><span class="line">    pi = (prop_info*) __system_property_find(name);</span><br><span class="line">    // ......省略后续代码，之后重点分析__system_property_find即可</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static bool is_legal_property_name(const char *name, unsigned int namelen)</span><br><span class="line">&#123;</span><br><span class="line">    if (namelen &gt;= PROP_NAME_MAX) return false;</span><br><span class="line">    if (namelen &lt; 1) return false;</span><br><span class="line">    if (name[0] == &apos;.&apos;) return false;</span><br><span class="line">    if (name[namelen - 1] == &apos;.&apos;) return false;</span><br><span class="line"></span><br><span class="line">    /* Only allow alphanumeric, plus &apos;.&apos;, &apos;-&apos;, or &apos;_&apos;*/</span><br><span class="line">    /* Don&apos;t allow &quot;..&quot; to appear in a property name */</span><br><span class="line">    unsigned int i;</span><br><span class="line">    bool previous_was_dot = false;</span><br><span class="line">    for (i = 0; i &lt; namelen; i ++) &#123;</span><br><span class="line">        if (name[i] == &apos;.&apos;) &#123;</span><br><span class="line">            if (previous_was_dot == true) return false;</span><br><span class="line">            previous_was_dot = true;</span><br><span class="line">            continue;</span><br><span class="line">        &#125;</span><br><span class="line">        previous_was_dot = false;</span><br><span class="line">        if (name[i] == &apos;_&apos; || name[i] == &apos;-&apos;) continue;</span><br><span class="line">        if (name[i] &gt;= &apos;0&apos; &amp;&amp; name[i] &lt;= &apos;9&apos;) continue;</span><br><span class="line">        if (name[i] &gt;= &apos;a&apos; &amp;&amp; name[i] &lt;= &apos;z&apos;) continue;</span><br><span class="line">        if (name[i] &gt;= &apos;A&apos; &amp;&amp; name[i] &lt;= &apos;Z&apos;) continue;</span><br><span class="line">        return false;</span><br><span class="line">    &#125;</span><br><span class="line">    return true;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，在property_set方法中，当添加一个(name, value)键值对时，会先在当前的属性空间中查找该键值对是否已经存在。根据我们之前的分析，这里查找的属性空间应该是prop_area结构体所指向的data区域。接下来，让我们深入代码去验证我们的想法。</p>
+<p>__system_property_find函数是在/bionic/libc/bionic/system_properties.c文件中定义的：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">const prop_info *__system_property_find(const char *name)</span><br><span class="line">&#123;</span><br><span class="line">    return find_property(root_node(), name, strlen(name), NULL, 0, false);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">// 分析一下root_node的实现</span><br><span class="line">static prop_bt *root_node()</span><br><span class="line">&#123;</span><br><span class="line">    return to_prop_obj(0);</span><br><span class="line">&#125;</span><br><span class="line">static void *to_prop_obj(prop_off_t off)</span><br><span class="line">&#123;</span><br><span class="line">    if (off &gt; pa_data_size) &#123;</span><br><span class="line">        return NULL;</span><br><span class="line">    &#125;</span><br><span class="line">    // 注意，这里off的值为0</span><br><span class="line">    // 所以，验证了我们的想法，prop_area结构体的char data[]果然是属性空间的起始地址</span><br><span class="line">    return __system_property_area__-&gt;data + off;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>上面的代码已经验证了我之前所说的想法：data指针指向的区域是属性内容的起始地址。<br>
+大家感兴趣可以自己阅读代码，看一下属性键值对是如何在属性空间中存储的。（我大体看了一下，貌似是很简单的二叉查找树的形式）。</p>
+<hr>
+<blockquote>
+<p>Tips<br>
+关于mmap映射文件实现共享内存IPC通信机制，可以参考这篇文章：<a href="http://blog.csdn.net/wzy_1988/article/details/40858765" target="_blank" rel="noopener">mmap实现IPC通信机制</a></p>
+</blockquote>
+<hr>
+<h3 id="init-workspace"><a class="header-anchor" href="#init-workspace">¶</a><strong>init_workspace</strong></h3>
+<p>接下来，我们来看一下init_workspace函数的源码（/system/core/init/property_service.c）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">typedef struct &#123;</span><br><span class="line">    void *data;</span><br><span class="line">    size_t size;</span><br><span class="line">    int fd;</span><br><span class="line">&#125;workspace;</span><br><span class="line"></span><br><span class="line">static int init_workspace(workspace *w, size_t size)</span><br><span class="line">&#123;</span><br><span class="line">    void *data;</span><br><span class="line">    int fd = open(PROP_FILENAME, O_RDONLY | O_NOFOLLOW);</span><br><span class="line">    if (fd &lt; 0)</span><br><span class="line">        return -1;</span><br><span class="line"></span><br><span class="line">    w-&gt;size = size;</span><br><span class="line">    w-&gt;fd = fd;</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="客户端进程访问属性内存区域"><a class="header-anchor" href="#客户端进程访问属性内存区域">¶</a><strong>客户端进程访问属性内存区域</strong></h2>
+<p>虽然属性内存区域是init进程创建的，但是Android系统希望其他进程也能够读取这块内存区域里的内容。为了做到这一点，init进程在属性区域初始化过程中做了如下两项工作：</p>
+<ol>
+<li>把属性内存区域创建在共享内存上，而共享内存是可以跨进程的。这一点，在上述代码中是通过mmap映射/dev/__properties__文件实现的。pa_workspace变量中的fd成员也保存了映射文件的句柄。</li>
+<li>如何让其他进程知道这个共享内存句柄呢？Android先将文件映射句柄赋值给__system_property_area__变量，这个变量属于bionic_lic库中的输出的一个变量，然后利用了gcc的constructor属性，这个属性指明了一个__lib_prenit函数，当bionic_lic库被加载时，将自动调用__libc_prenit，这个函数内部完成共享内存到本地进程的映射工作。</li>
+</ol>
+<p>只讲原理是不行的，我们直接来看一下__lib_prenit函数代码的相关实现：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">void __attribute__((constructor)) __libc_prenit(void);</span><br><span class="line">void __libc_prenit(void)</span><br><span class="line">&#123;</span><br><span class="line">    // ...</span><br><span class="line">    __libc_init_common(elfdata); // 调用这个函数</span><br><span class="line">    // ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>__libc_init_common函数为：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">void __libc_init_common(uintptr_t *elfdata)</span><br><span class="line">&#123;</span><br><span class="line">    // ...</span><br><span class="line">    __system_properties_init(); // 初始化客户端的属性存储区域</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>__system_properties_init函数有回到了我们熟悉的/bionic/libc/bionic/system_properties.c文件：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br></pre></td><td class="code"><pre><span class="line">static int get_fd_from_env(void)</span><br><span class="line">&#123;</span><br><span class="line">    char *env = getenv(&quot;ANDROID_PROPERTY_WORKSPACE&quot;);</span><br><span class="line"></span><br><span class="line">    if (! env) &#123;</span><br><span class="line">        return -1;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    return atoi(env);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static int map_prop_area()</span><br><span class="line">&#123;</span><br><span class="line">    bool formFile = true;</span><br><span class="line">    int result = -1;</span><br><span class="line">    int fd;</span><br><span class="line">    int ret;</span><br><span class="line"></span><br><span class="line">    fd = open(property_filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);</span><br><span class="line">    if (fd &gt;= 0) &#123;</span><br><span class="line">        /* For old kernels that don&apos;t support O_CLOEXEC */</span><br><span class="line">        ret = fcntl(fd, F_SETFD, FD_CLOEXEC);</span><br><span class="line">        if (ret &lt; 0)</span><br><span class="line">            goto cleanup;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    if ((fd &lt; 0) &amp;&amp; (error == ENOENT)) &#123;</span><br><span class="line">        fd = get_fd_from_env();</span><br><span class="line">        fromFile = false;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    if (fd &lt; 0) &#123;</span><br><span class="line">        return -1;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    struct stat fd_stat;</span><br><span class="line">    if (fstat(fd, &amp;fd_stat) &lt; 0) &#123;</span><br><span class="line">        goto cleanup;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    if ((fd_stat.st_uid != 0)</span><br><span class="line">            || (fd_stat.st_gid != 0)</span><br><span class="line">            || (fd_stat.st_mode &amp; (S_IWGRP | S_IWOTH) != 0)</span><br><span class="line">            || (fd_stat.st_size &lt; sizeof(prop_area))) &#123;</span><br><span class="line">        goto cleanup;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    pa_size = fd_stat.st_size;</span><br><span class="line">    pa_data_size = pa_size - sizeof(prop_area);</span><br><span class="line"></span><br><span class="line">    /* </span><br><span class="line">     * 映射init创建的属性内存到本地进程空间，这样本地进程就可以使用这块共享内存了。</span><br><span class="line">     * 注意：映射时制定了PROT_READ属性，所以客户端进程只能读属性，不能设置属性。</span><br><span class="line">     */</span><br><span class="line">    prop_area *pa = mmap(NULL, pa_size, PROT_READ, MAP_SHARED, fd, 0);</span><br><span class="line"></span><br><span class="line">    if (pa == MAP_FAILED) &#123;</span><br><span class="line">        goto cleanup;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    if ((pa-&gt;magic != PROP_AREA_MAGIC) || (pa-&gt;version != PROP_AREA_VERSION &amp;&amp; pa-&gt;version != PROP_AREA_VERSION_COMPAT)) &#123;</span><br><span class="line">        munmap(pa, pa_size);</span><br><span class="line">        goto cleanup;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    if (pa-&gt;version == PROP_AREA_VERSION_COMPAT) &#123;</span><br><span class="line">        compat_mode = true;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    result = 0;</span><br><span class="line"></span><br><span class="line">    __system_property_area__ = pa;</span><br><span class="line">cleanup:</span><br><span class="line">    if (fromFile) &#123;</span><br><span class="line">        close(fd);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    return result;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">int __system_properties_init()</span><br><span class="line">&#123;</span><br><span class="line">    return map_prop_area();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过对源码的阅读，可以发现，客户端通过mmap映射，可以读取属性内存的内容，但是没有权限设置属性。那客户端是如何设置属性的呢？这就涉及到下面要将的属性服务器了。</p>
+<hr>
+<h1><strong>属性服务器的分析</strong></h1>
+<p>init进程会启动一个属性服务器，而客户端只能通过与属性服务器的交互来设置属性。</p>
+<hr>
+<h2 id="启动属性服务器"><a class="header-anchor" href="#启动属性服务器">¶</a><strong>启动属性服务器</strong></h2>
+<p>先来看一下属性服务器的内容，它由property_service_init_action函数启动，源码如下（/system/core/init/init.c&amp;&amp;property_service.c）：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br></pre></td><td class="code"><pre><span class="line">static int property_service_init_action(int nargs, char **args)</span><br><span class="line">&#123;</span><br><span class="line">    start_property_service();</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void load_override_properties()</span><br><span class="line">&#123;</span><br><span class="line">#ifdef ALLOW_LOCAL_PROP_OVERRIDE</span><br><span class="line">    char debuggable[PROP_VALUE_MAX];</span><br><span class="line">    int ret;</span><br><span class="line"></span><br><span class="line">    ret = property_get(&quot;ro.debuggable&quot;, debuggable);</span><br><span class="line">    if (ret &amp;&amp; (strcmp(debuggable, &quot;1&quot;) == 0)) &#123;</span><br><span class="line">        load_properties_from_file(PROP_PATH_LOCAL_OVERRIDE);</span><br><span class="line">    &#125;</span><br><span class="line">#endif</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">static void load_properties(char *data)</span><br><span class="line">&#123;</span><br><span class="line">    char *key, *value, *eol, *sol, *tmp;</span><br><span class="line"></span><br><span class="line">    sol = data;</span><br><span class="line">    while ((eol = strchr(sol, &apos;\n&apos;))) &#123;</span><br><span class="line">        key = sol;</span><br><span class="line">        // 赋值下一行的指针给sol</span><br><span class="line">        *eol ++ = 0;</span><br><span class="line">        sol = eol;</span><br><span class="line"></span><br><span class="line">        value = strchr(key, &apos;=&apos;);</span><br><span class="line">        if (value == 0) continue;</span><br><span class="line">        *value++ = 0;</span><br><span class="line"></span><br><span class="line">        while (isspace(*key)) key ++;</span><br><span class="line">        if (*key == &apos;#&apos;) continue;</span><br><span class="line">        tmp = value - 2;</span><br><span class="line">        while ((tmp &gt; key) &amp;&amp; isspace(*tmp)) *tmp-- = 0;</span><br><span class="line"></span><br><span class="line">        while (isspace(*value)) value ++;</span><br><span class="line">        tmp = eol - 2;</span><br><span class="line">        while ((tmp &gt; value) &amp;&amp; isspace(*tmp)) *tmp-- = 0;</span><br><span class="line"></span><br><span class="line">        property_set(key, value);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">int create_socket(const char *name, int type, mode_t perm, uid_t uid, gid_t gid)</span><br><span class="line">&#123;</span><br><span class="line">    struct sockaddr_un addr;</span><br><span class="line">    int fd, ret;</span><br><span class="line">    char *secon;</span><br><span class="line"></span><br><span class="line">    fd = socket(PF_UNIX, type, 0);</span><br><span class="line">    if (fd &lt; 0) &#123;</span><br><span class="line">        ERROR(&quot;Failed to open socket &apos;%s&apos;: %s\n&quot;, name, strerror(errno));</span><br><span class="line">        return -1;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    memset(&amp;addr, 0, sizeof(addr));</span><br><span class="line">    addr.sun_family = AF_UNIX;</span><br><span class="line">    snprintf(addr.sun_path, sizeof(addr.sun_path), ANDROID_SOCKET_DIR&quot;/%s&quot;, name);</span><br><span class="line"></span><br><span class="line">    ret = unlink(addr.sun_path);</span><br><span class="line">    if (ret != 0 &amp;&amp; errno != ENOENT) &#123;</span><br><span class="line">        goto out_close;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ret = bind(fd, (struct sockaddr *)&amp;addr, sizeof(addr));</span><br><span class="line">    if (ret) &#123;</span><br><span class="line">        goto out_unlink;</span><br><span class="line">    &#125;</span><br><span class="line">    chown(addr.sun_path, uid, gid);</span><br><span class="line">    chmod(addr.sun_path, perm);</span><br><span class="line"></span><br><span class="line">    return fd;</span><br><span class="line"></span><br><span class="line">out_unlink:</span><br><span class="line">    unlink(addr.sun_path);</span><br><span class="line">out_close:</span><br><span class="line">    close(fd);</span><br><span class="line">    return -1;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">#define PROP_PATH_SYSTEM_BUILD &quot;/system/build.prop&quot;</span><br><span class="line">#define PROP_PATH_SYSTEM_DEFAULT &quot;/system/default.prop&quot;</span><br><span class="line">#define PROP_PATH_LOCAL_OVERRIDE &quot;/data/local.prop&quot;</span><br><span class="line">#define PROP_PATH_FACTORY &quot;/factory/factory.prop&quot;</span><br><span class="line"></span><br><span class="line">void start_property_service(void)</span><br><span class="line">&#123;</span><br><span class="line">    int fd;</span><br><span class="line"></span><br><span class="line">    load_properties_from_file(PROP_PATH_SYSTEM_BUILD);</span><br><span class="line">    load_properties_from_file(PROP_PATH_SYSTEM_DEFAULT);</span><br><span class="line">    load_override_properties();</span><br><span class="line">    /*Read persistent properties after all default values have been loaded.*/</span><br><span class="line">    load_persistent_properties();</span><br><span class="line"></span><br><span class="line">    fd = create_socket(PROP_SERVICE_NAME, SOCK_STREAM, 0666, 0, 0);</span><br><span class="line">    if (fd &lt; 0) return;</span><br><span class="line">    fcntl(fd, F_SETFD, FD_CLOEXEC);</span><br><span class="line">    fcntl(fd, F_SETFL, O_NONBLOCK);</span><br><span class="line"></span><br><span class="line">    listen(fd, 8);</span><br><span class="line">    property_set_fd = fd;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从上述代码可以看到，init进程除了会预写入指定文件（例如：system/build.prop）属性外，还会创建一个UNIX Domain Socket，用于接受客户端的请求，构建属性。那这个socket请求是再哪里被处理的呢？<br>
+答案是：在init中的for循环处已经进行了相关处理。</p>
+<blockquote>
+<p>更多关于UNIX Domain Socket IPC的介绍，可以考虑这篇文章：<a href="http://blog.csdn.net/wzy_1988/article/details/44928691" target="_blank" rel="noopener">UNIX Domain Socket IPC</a></p>
+</blockquote>
+<hr>
+<h2 id="服务端处理设置属性请求"><a class="header-anchor" href="#服务端处理设置属性请求">¶</a><strong>服务端处理设置属性请求</strong></h2>
+<p>接收属性设置请求的地方是在init进程中，相关代码如下所示：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">int main(int argc, char **argv)</span><br><span class="line">&#123;</span><br><span class="line">    // ...省略不相关代码</span><br><span class="line"></span><br><span class="line">    for (;;) &#123;</span><br><span class="line">        // ...</span><br><span class="line">        for (i = 0; i &lt; fd_count; i ++) &#123;</span><br><span class="line">            if (ufds[i].fd == get_property_set_fd())</span><br><span class="line">                handle_property_set_fd();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从上述代码可以看出，当属性服务器收到客户端请求时，init进程会调用handle_property_set_fd函数进行处理，函数位置是：system/core/init/property_service.c，我们来看一下这个函数的实现源码：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line">void handle_property_set_fd()</span><br><span class="line">&#123;</span><br><span class="line">    prop_msg msg;</span><br><span class="line">    int s;</span><br><span class="line">    int r;</span><br><span class="line">    int res;</span><br><span class="line">    struct ucred cr;</span><br><span class="line">    struct sockaddr_un addr;</span><br><span class="line">    socklen_t addr_size = sizeof(addr);</span><br><span class="line">    socklen_t cr_size = sizeof(cr);</span><br><span class="line">    char *source_ctx = NULL;</span><br><span class="line"></span><br><span class="line">    // 接收TCP连接</span><br><span class="line">    if ((s = accept(property_set_fd, (struct sockaddr *) &amp;addr, &amp;addr_size)) &lt; 0) &#123;</span><br><span class="line">        return;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    // 接收客户端请求数据</span><br><span class="line">    r = TEMP_FAILURE_RETRY(recv(s, &amp;msg, sizeof(msg), 0));</span><br><span class="line">    if (r != sizeof(prop_msg)) &#123;</span><br><span class="line">        ERROR(&quot;sys_prop: mis-match msg size received: %d expected : %d errno: %d\n&quot;, r, sizeof(prop_msg), errno);</span><br><span class="line">        close(s);</span><br><span class="line">        return;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    switch(msg.cmd) &#123;</span><br><span class="line">    case PROP_MSG_SETPROP:</span><br><span class="line">        msg.name[PROP_NAME_MAX - 1] = 0;</span><br><span class="line">        msg.value[PROP_VALUE_MAX - 1] = 0;</span><br><span class="line"></span><br><span class="line">        if (memcmp(msg.name, &quot;ctl.&quot;, 4) == 0) &#123;</span><br><span class="line">            close(s);</span><br><span class="line">            if (check_control_perms(msg.value, cr.uid, cr.gid, source_ctx)) &#123;</span><br><span class="line">                handle_control_message((char*) msg.name + 4, (char*) msg.value);</span><br><span class="line">            &#125; else &#123;</span><br><span class="line">                ERROR(&quot;sys_prop: Unable to %s service ctl [%s] uid:%d gid:%d pid:%d\n&quot;, msg.name + 4, msg.value, cr.uid, cr.gid, cr.pid);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; else &#123;</span><br><span class="line">            if (check_perms(msg.name, cr.uid, cr.gid, source_ctx)) &#123;</span><br><span class="line">                property_set((char *) msg.name, (char*) msg.value);</span><br><span class="line">            &#125;</span><br><span class="line">            close(s);</span><br><span class="line">        &#125;</span><br><span class="line">        break;</span><br><span class="line">    default:</span><br><span class="line">        close(s);</span><br><span class="line">        break;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>当客户端的权限满足要求时，init就调用property_set进行相关处理。property_set源码实现如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line">int property_set(const char *name, const char *value)</span><br><span class="line">&#123;</span><br><span class="line">    prop_info *pi;</span><br><span class="line">    int ret;</span><br><span class="line"></span><br><span class="line">    size_t namelen = strlen(name);</span><br><span class="line">    size_t valuelen = strlen(value);</span><br><span class="line"></span><br><span class="line">    if (! is_legal_property_name(name, namelen)) return -1;</span><br><span class="line">    if (valuelen &gt;= PROP_VALUE_MAX) return -1;</span><br><span class="line"></span><br><span class="line">    // 从属性空间中寻找是否已经存在该属性值</span><br><span class="line">    pi = (prop_info*) __system_property_find(name);</span><br><span class="line">    if (pi != 0) &#123;</span><br><span class="line">        // ro开头的属性被设置后，不允许再被修改</span><br><span class="line">        if (! strncmp(name, &quot;ro.&quot;, 3)) return -1;</span><br><span class="line"></span><br><span class="line">        __system_property_update(pi, value, valuelen);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        ret = __system_property_add(name, namelen, value, valuelen);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    // 有一些特殊的属性需要特殊处理，例如net.和persist.开头的属性</span><br><span class="line">    if (strncmp(&quot;net.&quot;, name, strlen(&quot;net.&quot;)) == 0) &#123;</span><br><span class="line">        if (strcmp(&quot;net.change&quot;, name) == 0) &#123;</span><br><span class="line">            return 0;</span><br><span class="line">        &#125;</span><br><span class="line">        property_set(&quot;net.change&quot;, name);</span><br><span class="line">    &#125; else if (persistent_properties_loaded &amp;&amp; strncmp(&quot;persist.&quot;, name, strlen(&quot;persist.&quot;)) == 0) &#123;</span><br><span class="line">        write_persistent_property(name, value);</span><br><span class="line">    &#125;</span><br><span class="line">    property_changed(name, value);</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>属性服务器端的工作基本到这里就完成了。最后，我们来看一下客户端是如何发送设置属性的socket请求。</p>
+<hr>
+<h2 id="客户端发送请求"><a class="header-anchor" href="#客户端发送请求">¶</a><strong>客户端发送请求</strong></h2>
+<p>客户端设置属性时是调用了property_set(“sys.istest”, “true”)方法。从上述分析可知，该方法实现跟服务器端的property_set方法不同，该方法一定是发送了socket请求，该方法源码位置为：/system/core/libcutils/properties.c：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">int property_set(const char *key, const char *value)</span><br><span class="line">&#123;</span><br><span class="line">    return __system_property_set(key, value);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，property_set调用了__system_property_set方法，这个方法位于：/bionic/libc/bionic/system_properties.c文件中：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line">struct prop_msg</span><br><span class="line">&#123;</span><br><span class="line">    unsigned cmd;</span><br><span class="line">    char name[PROP_NAME_MAX];</span><br><span class="line">    char value[PROP_VALUE_MAX];</span><br><span class="line">&#125;;</span><br><span class="line">typedef struct prop_msg prop_msg;</span><br><span class="line"></span><br><span class="line">static int send_prop_msg(prop_msg *msg)</span><br><span class="line">&#123;</span><br><span class="line">    struct pollfd pollfds[1];</span><br><span class="line">    struct sockaddr_un addr;</span><br><span class="line">    socklen_t alen;</span><br><span class="line">    size_t namelen;</span><br><span class="line">    int s;</span><br><span class="line">    int r;</span><br><span class="line">    int result = -1;</span><br><span class="line"></span><br><span class="line">    s = socket(AF_LOCAL, SOCK_STREAM, 0);</span><br><span class="line">    if (s &lt; 0) &#123;</span><br><span class="line">        return result;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    memset(&amp;addr, 0, sizeof(addr));</span><br><span class="line">    namelen = strlen(property_service_socket);</span><br><span class="line">    strlcpy(addr.sun_path, property_service_socket, sizeof(addr.sun_path));</span><br><span class="line">    addr.sun_family = AF_LOCAL;</span><br><span class="line">    alen = namelen + offsetof(struct sockaddr_un, sun_path) + 1;</span><br><span class="line"></span><br><span class="line">    if (TEMP_FAILURE_RETRY(connect(s, (struct sockaddr *) &amp;addr, alen)) &lt; 0) &#123;</span><br><span class="line">        close(s);</span><br><span class="line">        return result;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    r = TEMP_FAILURE_RETRY(send(s, msg, sizeof(prop_msg), 0));</span><br><span class="line"></span><br><span class="line">    close(s);</span><br><span class="line">    return result;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">int __system_property_set(const char *key, const char *value)</span><br><span class="line">&#123;</span><br><span class="line">    int err;</span><br><span class="line">    prop_msg msg;</span><br><span class="line"></span><br><span class="line">    if (key == 0) return -1;</span><br><span class="line">    if (value == 0) value = &quot;&quot;;</span><br><span class="line">    if (strlen(key) &gt;= PROP_NAME_MAX) return -1;</span><br><span class="line">    if (strlen(value) &gt;= PROP_VALUE_MAX) return -1;</span><br><span class="line"></span><br><span class="line">    memset(&amp;msg, 0, sizeof(msg));</span><br><span class="line">    msg.cmd = PROP_MSG_SETPROP;</span><br><span class="line">    strlcpy(msg.name, key, sizeof(msg.name));</span><br><span class="line">    strlcpy(msg.value, value, sizeof(msg.value));</span><br><span class="line"></span><br><span class="line">    err = send_prop_msg(&amp;msg);</span><br><span class="line">    if (err &lt; 0) &#123;</span><br><span class="line">        return err;</span><br><span class="line">    &#125;</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    
+
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/android/" rel="tag"># android</a>
+          
+            <a href="/tags/system/" rel="tag"># system</a>
+          
+        </div>
+      
+
+      
+      
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2017/08/03/Skills/dsm-ddns-namecheap/" rel="next" title="Add Namecheap DDNS on DSM">
+                <i class="fa fa-chevron-left"></i> Add Namecheap DDNS on DSM
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+  
+
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            Overview
+          </li>
+        </ul>
+      
+
+      <section class="site-overview-wrap sidebar-panel">
+        <div class="site-overview">
+          <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+            
+              <img class="site-author-image" itemprop="image"
+                src="/images/avatar.jpg"
+                alt="jemyzhang" />
+            
+              <p class="site-author-name" itemprop="name">jemyzhang</p>
+              <p class="site-description motion-element" itemprop="description"></p>
+          </div>
+
+          
+            <nav class="site-state motion-element">
+              
+                <div class="site-state-item site-state-posts">
+                
+                  <a href="/archives/">
+                
+                    <span class="site-state-item-count">40</span>
+                    <span class="site-state-item-name">posts</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-categories">
+                  <a href="/categories/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">2</span>
+                    <span class="site-state-item-name">categories</span>
+                  </a>
+                </div>
+              
+
+              
+                
+                
+                <div class="site-state-item site-state-tags">
+                  <a href="/tags/index.html">
+                    
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                      
+                    
+                    <span class="site-state-item-count">54</span>
+                    <span class="site-state-item-name">tags</span>
+                  </a>
+                </div>
+              
+            </nav>
+          
+
+          
+
+          
+
+          
+          
+
+          
+          
+
+          
+            
+          
+          
+
+        </div>
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#undefined"><span class="nav-number">1.</span> <span class="nav-text">概述</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#undefined"><span class="nav-number">2.</span> <span class="nav-text">属性服务</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#undefined"><span class="nav-number">3.</span> <span class="nav-text">属性服务初始化</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#创建存储空间"><span class="nav-number">3.1.</span> <span class="nav-text">¶创建存储空间</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#system-property-area-init"><span class="nav-number">3.1.1.</span> <span class="nav-text">¶__system_property_area_init</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#property-set"><span class="nav-number">3.1.1.1.</span> <span class="nav-text">¶property_set</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#init-workspace"><span class="nav-number">3.1.2.</span> <span class="nav-text">¶init_workspace</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#客户端进程访问属性内存区域"><span class="nav-number">3.2.</span> <span class="nav-text">¶客户端进程访问属性内存区域</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#undefined"><span class="nav-number">4.</span> <span class="nav-text">属性服务器的分析</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#启动属性服务器"><span class="nav-number">4.1.</span> <span class="nav-text">¶启动属性服务器</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#服务端处理设置属性请求"><span class="nav-number">4.2.</span> <span class="nav-text">¶服务端处理设置属性请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#客户端发送请求"><span class="nav-number">4.3.</span> <span class="nav-text">¶客户端发送请求</span></a></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">&copy; <span itemprop="copyrightYear">2018</span>
+  <span class="with-love" id="animate"> 
+    <i class="fa fa-user"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">jemyzhang</span>
+
+  
+
+  
+</div>
+
+
+
+
+  <div class="powered-by">Powered by <a class="theme-link" target="_blank" href="https://hexo.io">Hexo</a></div>
+
+
+
+  <span class="post-meta-divider">|</span>
+
+
+
+  <div class="theme-info">Theme &mdash; <a class="theme-link" target="_blank" href="https://github.com/theme-next/hexo-theme-next">NexT.Mist</a> v6.0.6</div>
+
+
+
+
+        
+
+
+
+
+
+
+
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+  
+
+  
+  
+    <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+  
+
+
+<script type="text/javascript" src="//cdn.bootcss.com/mermaid/6.0.0/mermaid.min.js?v=6.0.0"></script>
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=6.0.6"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=6.0.6"></script>
+
+
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=6.0.6"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=6.0.6"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=6.0.6"></script>
+
+
+
+  
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+  
+
+  <script type="text/javascript">
+    // Popup Window;
+    var isfetched = false;
+    var isXml = true;
+    // Search DB path;
+    var search_path = "search.xml";
+    if (search_path.length === 0) {
+      search_path = "search.xml";
+    } else if (/json$/i.test(search_path)) {
+      isXml = false;
+    }
+    var path = "/" + search_path;
+    // monitor main search box;
+
+    var onPopupClose = function (e) {
+      $('.popup').hide();
+      $('#local-search-input').val('');
+      $('.search-result-list').remove();
+      $('#no-result').remove();
+      $(".local-search-pop-overlay").remove();
+      $('body').css('overflow', '');
+    }
+
+    function proceedsearch() {
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay"></div>')
+        .css('overflow', 'hidden');
+      $('.search-popup-overlay').click(onPopupClose);
+      $('.popup').toggle();
+      var $localSearchInput = $('#local-search-input');
+      $localSearchInput.attr("autocapitalize", "none");
+      $localSearchInput.attr("autocorrect", "off");
+      $localSearchInput.focus();
+    }
+
+    // search function;
+    var searchFunc = function(path, search_id, content_id) {
+      'use strict';
+
+      // start loading animation
+      $("body")
+        .append('<div class="search-popup-overlay local-search-pop-overlay">' +
+          '<div id="search-loading-icon">' +
+          '<i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>' +
+          '</div>' +
+          '</div>')
+        .css('overflow', 'hidden');
+      $("#search-loading-icon").css('margin', '20% auto 0 auto').css('text-align', 'center');
+
+      
+
+      $.ajax({
+        url: path,
+        dataType: isXml ? "xml" : "json",
+        async: true,
+        success: function(res) {
+          // get the contents from search data
+          isfetched = true;
+          $('.popup').detach().appendTo('.header-inner');
+          var datas = isXml ? $("entry", res).map(function() {
+            return {
+              title: $("title", this).text(),
+              content: $("content",this).text(),
+              url: $("url" , this).text()
+            };
+          }).get() : res;
+          var input = document.getElementById(search_id);
+          var resultContent = document.getElementById(content_id);
+          var inputEventFunction = function() {
+            var searchText = input.value.trim().toLowerCase();
+            var keywords = searchText.split(/[\s\-]+/);
+            if (keywords.length > 1) {
+              keywords.push(searchText);
+            }
+            var resultItems = [];
+            if (searchText.length > 0) {
+              // perform local searching
+              datas.forEach(function(data) {
+                var isMatch = false;
+                var hitCount = 0;
+                var searchTextCount = 0;
+                var title = data.title.trim();
+                var titleInLowerCase = title.toLowerCase();
+                var content = data.content.trim().replace(/<[^>]+>/g,"");
+                
+                var contentInLowerCase = content.toLowerCase();
+                var articleUrl = decodeURIComponent(data.url);
+                var indexOfTitle = [];
+                var indexOfContent = [];
+                // only match articles with not empty titles
+                if(title != '') {
+                  keywords.forEach(function(keyword) {
+                    function getIndexByWord(word, text, caseSensitive) {
+                      var wordLen = word.length;
+                      if (wordLen === 0) {
+                        return [];
+                      }
+                      var startPosition = 0, position = [], index = [];
+                      if (!caseSensitive) {
+                        text = text.toLowerCase();
+                        word = word.toLowerCase();
+                      }
+                      while ((position = text.indexOf(word, startPosition)) > -1) {
+                        index.push({position: position, word: word});
+                        startPosition = position + wordLen;
+                      }
+                      return index;
+                    }
+
+                    indexOfTitle = indexOfTitle.concat(getIndexByWord(keyword, titleInLowerCase, false));
+                    indexOfContent = indexOfContent.concat(getIndexByWord(keyword, contentInLowerCase, false));
+                  });
+                  if (indexOfTitle.length > 0 || indexOfContent.length > 0) {
+                    isMatch = true;
+                    hitCount = indexOfTitle.length + indexOfContent.length;
+                  }
+                }
+
+                // show search results
+
+                if (isMatch) {
+                  // sort index by position of keyword
+
+                  [indexOfTitle, indexOfContent].forEach(function (index) {
+                    index.sort(function (itemLeft, itemRight) {
+                      if (itemRight.position !== itemLeft.position) {
+                        return itemRight.position - itemLeft.position;
+                      } else {
+                        return itemLeft.word.length - itemRight.word.length;
+                      }
+                    });
+                  });
+
+                  // merge hits into slices
+
+                  function mergeIntoSlice(text, start, end, index) {
+                    var item = index[index.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    var hits = [];
+                    var searchTextCountInSlice = 0;
+                    while (position + word.length <= end && index.length != 0) {
+                      if (word === searchText) {
+                        searchTextCountInSlice++;
+                      }
+                      hits.push({position: position, length: word.length});
+                      var wordEnd = position + word.length;
+
+                      // move to next position of hit
+
+                      index.pop();
+                      while (index.length != 0) {
+                        item = index[index.length - 1];
+                        position = item.position;
+                        word = item.word;
+                        if (wordEnd > position) {
+                          index.pop();
+                        } else {
+                          break;
+                        }
+                      }
+                    }
+                    searchTextCount += searchTextCountInSlice;
+                    return {
+                      hits: hits,
+                      start: start,
+                      end: end,
+                      searchTextCount: searchTextCountInSlice
+                    };
+                  }
+
+                  var slicesOfTitle = [];
+                  if (indexOfTitle.length != 0) {
+                    slicesOfTitle.push(mergeIntoSlice(title, 0, title.length, indexOfTitle));
+                  }
+
+                  var slicesOfContent = [];
+                  while (indexOfContent.length != 0) {
+                    var item = indexOfContent[indexOfContent.length - 1];
+                    var position = item.position;
+                    var word = item.word;
+                    // cut out 100 characters
+                    var start = position - 20;
+                    var end = position + 80;
+                    if(start < 0){
+                      start = 0;
+                    }
+                    if (end < position + word.length) {
+                      end = position + word.length;
+                    }
+                    if(end > content.length){
+                      end = content.length;
+                    }
+                    slicesOfContent.push(mergeIntoSlice(content, start, end, indexOfContent));
+                  }
+
+                  // sort slices in content by search text's count and hits' count
+
+                  slicesOfContent.sort(function (sliceLeft, sliceRight) {
+                    if (sliceLeft.searchTextCount !== sliceRight.searchTextCount) {
+                      return sliceRight.searchTextCount - sliceLeft.searchTextCount;
+                    } else if (sliceLeft.hits.length !== sliceRight.hits.length) {
+                      return sliceRight.hits.length - sliceLeft.hits.length;
+                    } else {
+                      return sliceLeft.start - sliceRight.start;
+                    }
+                  });
+
+                  // select top N slices in content
+
+                  var upperBound = parseInt('1');
+                  if (upperBound >= 0) {
+                    slicesOfContent = slicesOfContent.slice(0, upperBound);
+                  }
+
+                  // highlight title and content
+
+                  function highlightKeyword(text, slice) {
+                    var result = '';
+                    var prevEnd = slice.start;
+                    slice.hits.forEach(function (hit) {
+                      result += text.substring(prevEnd, hit.position);
+                      var end = hit.position + hit.length;
+                      result += '<b class="search-keyword">' + text.substring(hit.position, end) + '</b>';
+                      prevEnd = end;
+                    });
+                    result += text.substring(prevEnd, slice.end);
+                    return result;
+                  }
+
+                  var resultItem = '';
+
+                  if (slicesOfTitle.length != 0) {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + highlightKeyword(title, slicesOfTitle[0]) + "</a>";
+                  } else {
+                    resultItem += "<li><a href='" + articleUrl + "' class='search-result-title'>" + title + "</a>";
+                  }
+
+                  slicesOfContent.forEach(function (slice) {
+                    resultItem += "<a href='" + articleUrl + "'>" +
+                      "<p class=\"search-result\">" + highlightKeyword(content, slice) +
+                      "...</p>" + "</a>";
+                  });
+
+                  resultItem += "</li>";
+                  resultItems.push({
+                    item: resultItem,
+                    searchTextCount: searchTextCount,
+                    hitCount: hitCount,
+                    id: resultItems.length
+                  });
+                }
+              })
+            };
+            if (keywords.length === 1 && keywords[0] === "") {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-search fa-5x" /></div>'
+            } else if (resultItems.length === 0) {
+              resultContent.innerHTML = '<div id="no-result"><i class="fa fa-frown-o fa-5x" /></div>'
+            } else {
+              resultItems.sort(function (resultLeft, resultRight) {
+                if (resultLeft.searchTextCount !== resultRight.searchTextCount) {
+                  return resultRight.searchTextCount - resultLeft.searchTextCount;
+                } else if (resultLeft.hitCount !== resultRight.hitCount) {
+                  return resultRight.hitCount - resultLeft.hitCount;
+                } else {
+                  return resultRight.id - resultLeft.id;
+                }
+              });
+              var searchResultList = '<ul class=\"search-result-list\">';
+              resultItems.forEach(function (result) {
+                searchResultList += result.item;
+              })
+              searchResultList += "</ul>";
+              resultContent.innerHTML = searchResultList;
+            }
+          }
+
+          if ('auto' === 'auto') {
+            input.addEventListener('input', inputEventFunction);
+          } else {
+            $('.search-icon').click(inputEventFunction);
+            input.addEventListener('keypress', function (event) {
+              if (event.keyCode === 13) {
+                inputEventFunction();
+              }
+            });
+          }
+
+          // remove loading animation
+          $(".local-search-pop-overlay").remove();
+          $('body').css('overflow', '');
+
+          proceedsearch();
+        }
+      });
+    }
+
+    // handle and trigger popup window;
+    $('.popup-trigger').click(function(e) {
+      e.stopPropagation();
+      if (isfetched === false) {
+        searchFunc(path, 'local-search-input', 'local-search-result');
+      } else {
+        proceedsearch();
+      };
+    });
+
+    $('.popup-btn-close').click(onPopupClose);
+    $('.popup').click(function(e){
+      e.stopPropagation();
+    });
+    $(document).on('keyup', function (event) {
+      var shouldDismissSearchPopup = event.which === 27 &&
+        $('.search-popup').is(':visible');
+      if (shouldDismissSearchPopup) {
+        onPopupClose();
+      }
+    });
+  </script>
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
