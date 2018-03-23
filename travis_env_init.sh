@@ -2,8 +2,7 @@
 
 __COMMENTS__='
 # OS: ubuntu 14.04 trusty
-# nodejs: 6.9.1
-# npm: 3.10.8
+# nodejs: stable
 # sudo: required
 # need "GIT_USER_NAME" "GIT_USER_EMAIL" "GIT_REPO_TOKEN" "BAIDU_ANALYTICS" "BAIDU_URL_SUBMIT_TOKEN" "DuoShuo_SHORT_NAME" variable in env.
 # env variable "icarus_opacity_disable" to control icarus opacity version display enable or disable.
@@ -15,17 +14,16 @@ __COMMENTS__='
 
 
 node --version
-npm --version
 
 echo "Hexo environment pre install start."
 echo "${__COMMENTS__}"
 
-npm install -g minimatch > /dev/null
-npm install -g graceful-fs > /dev/null
-npm install -g gulp > /dev/null
-npm install -g hexo > /dev/null
-npm install -g hexo-cli > /dev/null
-npm install > /dev/null
+#npm install -g minimatch > /dev/null
+#npm install -g graceful-fs > /dev/null
+#npm install -g gulp > /dev/null
+#npm install -g hexo > /dev/null
+#npm install -g hexo-cli > /dev/null
+#npm install > /dev/null
 
 echo "hexo and packages install complete."
 
@@ -46,6 +44,9 @@ sed -i "s~#scheme: Mist~scheme: Mist~" "${theme_config_file}"
 sed -i "s~highlight_theme: normal~highlight_theme: night eighties~" "${theme_config_file}"
 # change google analytics
 sed -i "s~#google_analytics:~google_analytics: ${CFG_GOOGLE_ANALYTICS}~" "${theme_config_file}"
+# enable auto excerpt
+sed -i ":begin; /auto_excerpt/,/false/ { /false/! { $! { N; b begin }; }; s/false/true/; };" "${theme_config_file}"
+sed -i "s~length: 150~length: 500~" "${theme_config_file}"
 # custom the content style
 cat <<EOF > themes/next/source/css/_variables/custom.styl
 \$main-desktop = 90%;

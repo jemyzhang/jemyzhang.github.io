@@ -1,6 +1,6 @@
 language: node_js # 指定语言环境
 node_js:
-  - "6" # 指定 NodeJS 版本
+  - stable # 指定 NodeJS 版本
 dist: trusty # 指定系统版本。trusty 是指 Ubuntu 14.04 发行版的名称
 sudo: required # 是否需要 sudo 权限
 
@@ -8,7 +8,17 @@ branches: # 指定要构建的分支
   only: # only 表示只构建以下分支
   - source
 
+cache:
+  yarn: true
+  directories:
+    - node_modules
+
+before_install:
+  - yarn global add hexo-cli
+  - yarn global add gulp
+ 
 install: # 在安装项目环境阶段需要运行的命令，一条一行，类似的还有 before_install
+  - yarn
   - source travis_env_init.sh # 指定 shell 脚本文件来做初始化
 
 script: # 在构建阶段需要运行的命令，一条一行，类似的还有 before_script、after_script
