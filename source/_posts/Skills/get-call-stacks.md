@@ -2,8 +2,6 @@ title: Get Call stacks
 date: 2016-09-10
 tags: [shell, skills, linux, snippets]
 ---
-Get Call stacks
-===
 
 ```sh
 get_stack() {
@@ -22,3 +20,4 @@ get_stack() {
    done
 }
 ```
+<!-- more -->

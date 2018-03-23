@@ -11,4 +11,4 @@ tcpdump for android[^ref]
 /data/local/tcpdump -p -vv -s 0 -w /sdcard/capture.pcap
 ```
 [^ref]: https://www.zhihu.com/question/20467503/answer/22758575
-
+<!-- more -->

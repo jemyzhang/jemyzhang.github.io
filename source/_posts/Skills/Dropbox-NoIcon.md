@@ -11,4 +11,4 @@ dropbox stop && DBUS_SESSION_BUS_ADDRESS="" dropbox start
 # - or -
 dropbox stop && dbus-launch dropbox start
 ```
-
+<!-- more -->

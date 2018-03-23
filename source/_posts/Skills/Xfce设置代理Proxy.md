@@ -2,11 +2,9 @@ title: Xfce设置代理Proxy
 date: 2016-09-10
 tags: [ubuntu, xfce, proxy]
 ---
-Xfce设置代理Proxy
-===
 
+## proxyon.sh
 <!-- more -->
-proxyon.sh
 ```sh
 if [ $(id -u) -ne 0 ]; then
   echo "This script must be run as root";
@@ -49,7 +47,7 @@ if [ $# -eq 2 ]
 fi
 ```
 
-proxyoff.sh
+## proxyoff.sh
 ```sh
 if [ $(id -u) -ne 0 ]; then
   echo "This script must be run as root";
@@ -66,7 +64,7 @@ printf "" > /etc/apt/apt.conf.d/95proxies;
 rm -rf lol.t;
 ```
 
-使用方法如下：
+## 使用方法如下：
 ```sh
 $ sudo ./proxyon.sh 10.2.20.17 8080
 OR

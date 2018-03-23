@@ -9,3 +9,4 @@ adb shell
 su
 settings put global captive_portal_server connect.rom.miui.com
 ```
+<!-- more -->

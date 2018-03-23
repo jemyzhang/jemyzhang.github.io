@@ -14,6 +14,7 @@ target_link_libraries(debug
 ```
 
 一直提示找不到xxx库, 解决方法很简单, 就是把`add_executable`放到`link_directories`后面就可以了-_-!
+<!-- more -->
 
 ```shell
 link_directories(libxxx/lib)

@@ -17,3 +17,4 @@ cat /proc/modules | cut -f 1 -d " " | while read module; do \
  echo; \
 done
 ```
+<!-- more -->

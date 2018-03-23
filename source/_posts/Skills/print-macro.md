@@ -10,3 +10,4 @@ tags: [c, predefine]
 #pragma message(PRINT_MACRO(MULTI_CACHE)) 
 #pragma message(PRINT_MACRO(_CACHE))
 ```
+<!-- more -->

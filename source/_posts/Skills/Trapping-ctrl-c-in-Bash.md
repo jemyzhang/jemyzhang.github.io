@@ -4,7 +4,7 @@ tags: [bash, shell]
 ---
 
 You can use the trap builtin to handle a user pressing ctrl-c during the execution of a Bash script. e.g. if you need to perform some cleanup functions.
-
+<!-- more -->
 ```
 #!/bin/bash
 

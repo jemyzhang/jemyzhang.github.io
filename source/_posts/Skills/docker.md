@@ -11,7 +11,7 @@ sudo sh -c "echo deb http://get.docker.io/ubuntu docker main > /etc/apt/sources.
 sudo apt-get update
 sudo apt-get install lxc-docker
 ```
-
+<!-- more -->
 ## 增加用户到docker组
 ```shell
 sudo usermod jemyzhang -G docker -a

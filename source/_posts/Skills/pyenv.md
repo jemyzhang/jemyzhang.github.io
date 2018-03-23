@@ -13,3 +13,4 @@ pyenv install 3.6.1
 pyenv virtualenv 3.6.1 xxx
 pyenv activate xxx
 ```
+<!-- more -->

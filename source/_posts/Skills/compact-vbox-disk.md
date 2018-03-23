@@ -7,7 +7,6 @@ tags: [virtualbox]
 Compact vbox disk
 ===
 
-<!-- more -->
 - run defrag in the guest (Windows)
 - nullify free space:
   With Linux guest run this:
@@ -19,6 +18,7 @@ Compact vbox disk
   ```powershell
   sdelete –z
   ```
+<!-- more -->
 - shutdown the guest VM
 
 - now run VBoxManage's compact command

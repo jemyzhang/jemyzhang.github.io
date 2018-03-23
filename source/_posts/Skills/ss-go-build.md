@@ -12,3 +12,4 @@ cd mu
 go get
 go build
 ```
+<!-- more -->

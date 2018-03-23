@@ -6,6 +6,7 @@ tags:
 ```
 top -p `pidof [process name] | sed 's/ /,/g'`
 ```
+<!-- more -->
 或更简洁:
 ```
 top -p `pgrep -d , [process name]`

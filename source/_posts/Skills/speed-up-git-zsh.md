@@ -5,6 +5,7 @@ tags: [zsh, git]
 
 ## Method 1
 Uncomment the `DISABLE_UNTRACKED_FILES_DIRTY="true"` inside the .zshrc
+<!-- more -->
 
 ## Method 2
 - Global configuration

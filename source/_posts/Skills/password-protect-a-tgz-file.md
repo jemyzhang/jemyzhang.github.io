@@ -11,3 +11,4 @@ gpg -o documents.tgz.gpg --symmetric documents.tgz
 # decrypt
 gpg documents.tgz.gpg
 ```
+<!-- more -->

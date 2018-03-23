@@ -10,7 +10,7 @@ tags: [ubuntu,wine,crossover]
 >
 >[HKEY_CLASSES_ROOT\https\shell\open\command]
 @="\"C:\\windows\\system32\\winebrowser.exe\" -nohome %1"
-
+<!-- more -->
 2. 替换iexplore.exe.so
 ```
 cd /usr/lib/wine/ [crossover: /opt/cxoffice/lib/wine/]

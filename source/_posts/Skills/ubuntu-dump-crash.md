@@ -7,7 +7,7 @@ tags: [ubuntu, debug]
 ```
 sudo apt-get install apport-retrace
 ```
-
+<!-- more -->
 - usage
 ```
 apport-retrace --stdout /var/crash/xxx.crash
